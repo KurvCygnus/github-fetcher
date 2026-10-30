@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -77,6 +77,29 @@ describe("createCacheStore", () => {
     await writeFile(join(dir, `${key}.json`), "not json", "utf8");
     await expect(store.get(key)).resolves.toBeNull();
     await expect(readdir(dir)).resolves.not.toContain(`${key}.json`);
+  });
+
+  it("deletes readable entries that fail validation", async () => {
+    const dir = await tempDir();
+    const store = createCacheStore({ mode: "disk", dir });
+    const key = cacheKey(entry.url, "token-a");
+    await writeFile(join(dir, `${key}.json`), "{\"version\":2}", "utf8");
+    await expect(store.get(key)).resolves.toBeNull();
+    await expect(readdir(dir)).resolves.not.toContain(`${key}.json`);
+  });
+
+  it("returns a miss and keeps an unreadable entry", async () => {
+    const dir = await tempDir();
+    const store = createCacheStore({ mode: "disk", dir });
+    const key = cacheKey(entry.url, "token-a");
+    //! chmod 0o000 does not make files unreadable on Windows (it only toggles
+    //! the read-only flag), so the unreadable case is simulated mock-free by
+    //! putting a directory at the entry path: readFile fails with a filesystem
+    //! error (EISDIR/EPERM, not ENOENT) on every platform, and the entry must
+    //! survive the miss instead of being deleted or making get() reject.
+    await mkdir(join(dir, `${key}.json`));
+    await expect(store.get(key)).resolves.toBeNull();
+    await expect(readdir(dir)).resolves.toContain(`${key}.json`);
   });
 
   it("writes atomically without leaving temp files", async () => {

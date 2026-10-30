@@ -79,8 +79,17 @@ function diskStore(dir: string, now: () => number): CacheStore {
 
   return {
     async get(key) {
+      const target = file(key);
+      let text: string;
       try {
-        const parsed: unknown = JSON.parse(await readFile(file(key), "utf8"));
+        text = await readFile(target, "utf8");
+      } catch {
+        //* ENOENT is the normal miss; other read failures (EPERM, EBADF, EISDIR, ...)
+        //* are not proof of corruption, so the entry is kept for a later retry.
+        return null;
+      }
+      try {
+        const parsed: unknown = JSON.parse(text);
         if (
           typeof parsed !== "object" ||
           parsed === null ||
@@ -92,7 +101,9 @@ function diskStore(dir: string, now: () => number): CacheStore {
         }
         return parsed as CacheEntry;
       } catch {
-        await rm(file(key), { force: true });
+        //* Only a file that was readable but unusable counts as corrupt and gets
+        //* deleted; the rm itself must never turn a miss into a rejection.
+        await rm(target, { force: true }).catch(() => {});
         return null;
       }
     },
