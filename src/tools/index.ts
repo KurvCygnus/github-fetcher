@@ -7,6 +7,7 @@ import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
 import { releaseTool } from "./releases.js";
 import { repoTool } from "./repo.js";
+import { searchCodeTool, searchIssuesTool, searchReposTool } from "./search.js";
 import { treeTool } from "./tree.js";
 
 export const tools: readonly ToolDefinition[] = [
@@ -21,4 +22,7 @@ export const tools: readonly ToolDefinition[] = [
   prTool,
   prsTool,
   releaseTool,
+  searchReposTool,
+  searchCodeTool,
+  searchIssuesTool,
 ];
