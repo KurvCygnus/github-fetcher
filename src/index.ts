@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { runInit } from "./cli/init.js";
 import { runCli } from "./cli/run.js";
 import { subcommandSpec, usageFor } from "./cli/subcommands.js";
 import { createGithubServer } from "./mcp/server.js";
@@ -14,6 +15,13 @@ async function main(): Promise<void> {
   if (first === "--help" || first === "-h" || first === "help") {
     process.stdout.write(usageFor(undefined));
     process.exitCode = 0;
+    return;
+  }
+  if (first === "init") {
+    process.exitCode = await runInit(rest, {
+      stdout: process.stdout,
+      stderr: process.stderr,
+    });
     return;
   }
   if (subcommandSpec(first) !== undefined) {

@@ -10,6 +10,7 @@ export interface ClientAdapter {
   candidates(home: string, cwd: string): string[];
   load(path: string): unknown;
   entry(name: string): unknown;
+  hasEntry(existing: unknown, name: string): boolean;
   merge(existing: unknown, name: string, entry: unknown): unknown;
   serialize(obj: unknown): string;
   write(path: string, obj: unknown): Promise<void>;
@@ -25,6 +26,16 @@ interface JsonSpec {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+//? Own-property checks keep inherited prototype keys from masquerading as configured entries.
+function jsonHasEntry(existing: unknown, container: readonly string[], name: string): boolean {
+  let level: unknown = existing;
+  for (const key of container) {
+    if (!isRecord(level) || !Object.hasOwn(level, key)) return false;
+    level = level[key];
+  }
+  return isRecord(level) && Object.hasOwn(level, name);
 }
 
 function jsonAdapter(spec: JsonSpec): ClientAdapter {
@@ -43,6 +54,9 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
     entry(_name) {
       return spec.build(PACKAGE_COMMAND);
     },
+    hasEntry(existing, name) {
+      return jsonHasEntry(existing, spec.container, name);
+    },
     merge(existing, name, entry) {
       const clone = structuredClone(existing);
       const root: Record<string, unknown> = isRecord(clone) ? clone : {};
@@ -59,7 +73,14 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
       }
       const container = level[leafKey];
       if (isRecord(container)) {
-        container[name] = entry;
+        //? defineProperty keeps names like "__proto__" as own data properties instead of
+        //? triggering the prototype setter and silently losing the entry.
+        Object.defineProperty(container, name, {
+          value: entry,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
       } else {
         level[leafKey] = { [name]: entry };
       }
@@ -92,8 +113,10 @@ const mcpServersSpec = (id: string, label: string, candidates: JsonSpec["candida
   });
 
 const claudeDesktop = mcpServersSpec("claude-desktop", "Claude Desktop", (home) => [
+  //? Paths derive from the injected home so tests stay hermetic; with home = os.homedir() this
+  //? is byte-identical to %APPDATA% on Windows.
   process.platform === "win32"
-    ? join(process.env.APPDATA ?? join(home, "AppData", "Roaming"), "Claude", "claude_desktop_config.json")
+    ? join(home, "AppData", "Roaming", "Claude", "claude_desktop_config.json")
     : undefined,
   process.platform === "darwin"
     ? join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")
@@ -115,7 +138,7 @@ const vscode = jsonAdapter({
     return [
       join(cwd, ".vscode", "mcp.json"),
       process.platform === "win32"
-        ? join(process.env.APPDATA ?? join(home, "AppData", "Roaming"), "Code", "User", "mcp.json")
+        ? join(home, "AppData", "Roaming", "Code", "User", "mcp.json")
         : undefined,
       process.platform === "darwin"
         ? join(home, "Library", "Application Support", "Code", "User", "mcp.json")
@@ -136,6 +159,23 @@ const codexEntry = (name: string): string => [
   `args = [${packageArgs.map((arg) => JSON.stringify(arg)).join(", ")}]`,
 ].join("\n");
 
+function codexText(existing: unknown): string {
+  return typeof existing === "string" ? existing : "";
+}
+
+//? A whole-line match keeps a commented-out or string-literal mention from counting as the
+//? real table header, which a substring search would accept.
+function codexHasEntry(existing: unknown, name: string): boolean {
+  const header = `[mcp_servers.${name}]`;
+  return codexText(existing).split(/\r?\n/).some((line) => {
+    const trimmed = line.trim();
+    if (trimmed === header) return true;
+    //* TOML allows a trailing comment after a table header; anything else (a longer table
+    //* name, a string literal) is not this entry.
+    return trimmed.startsWith(header) && trimmed.slice(header.length).trimStart().startsWith("#");
+  });
+}
+
 const codex: ClientAdapter = {
   id: "codex",
   label: "Codex CLI",
@@ -144,10 +184,13 @@ const codex: ClientAdapter = {
     return readFileSync(path, "utf8");
   },
   entry: codexEntry,
+  hasEntry: codexHasEntry,
   merge(existing, name) {
-    const text = String(existing);
-    if (text.includes(`[mcp_servers.${name}]`)) return text;
-    return `${text.replace(/\s*$/, "")}\n\n${codexEntry(name)}\n`;
+    const text = codexText(existing);
+    if (codexHasEntry(text, name)) return text;
+    const body = text.replace(/\s*$/, "");
+    //* A fresh config (no candidate file) arrives as undefined; emit just the new table.
+    return body === "" ? `${codexEntry(name)}\n` : `${body}\n\n${codexEntry(name)}\n`;
   },
   serialize(obj) {
     return String(obj);

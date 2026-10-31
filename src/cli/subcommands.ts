@@ -60,7 +60,13 @@ export function usageFor(subcommand: string | undefined): string {
     const flags = Object.keys(spec.flags).map((key) => `--${key}`).join(" ");
     return `github-fetcher ${subcommand} ${positionals}\n  tool: ${spec.tool}\n  flags: ${flags || "(none)"}\n`;
   }
-  const lines = Object.entries(SUBCOMMANDS).map(([name, entry]) => `  ${name.padEnd(15)} ${entry.tool}`);
+  //? init/remove are config management, not tools: they never appear in tools/list, so their
+  //? rows are spelled out here instead of coming from the SUBCOMMANDS table.
+  const lines = [
+    ...Object.entries(SUBCOMMANDS).map(([name, entry]) => `  ${name.padEnd(15)} ${entry.tool}`),
+    `  ${"init".padEnd(15)} configure MCP clients interactively (TUI; --client/--all/--dry-run)`,
+    `  ${"remove".padEnd(15)} remove the github entry from configured clients.`,
+  ];
   return [
     "Usage: github-fetcher [serve | <subcommand> ...]",
     "",

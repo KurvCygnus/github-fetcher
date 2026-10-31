@@ -1,0 +1,288 @@
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname } from "node:path";
+import { createTokenResolver } from "../core/auth.js";
+import { loadConfig } from "../core/config.js";
+import { CliUsageError } from "./argv.js";
+import { ADAPTERS } from "./clients/index.js";
+import type { ClientAdapter } from "./clients/index.js";
+import { selectFromMenu } from "./tui.js";
+import type { TuiDeps, TuiItem } from "./tui.js";
+
+export interface InitOptions {
+  clients?: string[] | undefined;
+  all?: boolean | undefined;
+  name: string;
+  dryRun: boolean;
+}
+
+export type SelectFn = (
+  items: readonly TuiItem[],
+  deps: TuiDeps,
+  preselected?: readonly string[],
+) => Promise<string[] | null>;
+
+export interface InitDeps {
+  stdout: NodeJS.WritableStream;
+  stderr: NodeJS.WritableStream;
+  home?: string | undefined;
+  cwd?: string | undefined;
+  interactive?: boolean | undefined;
+  input?: NodeJS.ReadStream | undefined;
+  //? Injection seam for the TUI: tests exercise cancel/confirm without a real terminal.
+  select?: SelectFn | undefined;
+}
+
+export type InitAction =
+  | "created"
+  | "updated"
+  | "skipped"
+  | "not-installed"
+  | "error"
+  | "would-create"
+  | "would-update"
+  | "would-skip"
+  | "cancelled";
+
+export interface InitResult {
+  client?: string | undefined;
+  path?: string | undefined;
+  action: InitAction;
+  backup?: string | undefined;
+  entry?: unknown;
+  message?: string | undefined;
+  hint?: string | undefined;
+}
+
+interface SelectedAdapter {
+  adapter: ClientAdapter;
+  explicit: boolean;
+}
+
+export const INIT_USAGE = "Usage: github-fetcher init [--client id,id] [--all] [--name github] [--dry-run]";
+
+const NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
+const DEFAULT_NAME = "github";
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function validateName(name: string): void {
+  if (!NAME_PATTERN.test(name)) {
+    throw new CliUsageError(
+      `invalid --name: ${JSON.stringify(name)} (allowed: letters, digits, dot, underscore, hyphen)`,
+    );
+  }
+}
+
+function validateClients(ids: readonly string[]): void {
+  for (const id of ids) {
+    if (!ADAPTERS.some((adapter) => adapter.id === id)) {
+      throw new CliUsageError(`unknown client: ${id} (known: ${ADAPTERS.map((adapter) => adapter.id).join(", ")})`);
+    }
+  }
+}
+
+function parseClientValue(raw: string): string[] {
+  const ids = raw.split(",").map((part) => part.trim()).filter((part) => part !== "");
+  if (ids.length === 0) throw new CliUsageError("--client requires at least one client id");
+  validateClients(ids);
+  return ids;
+}
+
+export function parseInitArgs(argv: string[]): InitOptions {
+  const clients: string[] = [];
+  let all = false;
+  let name = DEFAULT_NAME;
+  let dryRun = false;
+
+  for (let index = 0; index < argv.length; index++) {
+    //? The loop bound guarantees the token exists; noUncheckedIndexedAccess cannot see it.
+    const token = argv[index] as string;
+    if (token === "--all") {
+      all = true;
+      continue;
+    }
+    if (token === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (token === "--client" || token === "--name") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new CliUsageError(`flag ${token} requires a value`);
+      }
+      if (token === "--client") clients.push(...parseClientValue(value));
+      else name = value;
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("--")) throw new CliUsageError(`unknown flag: ${token}`);
+    throw new CliUsageError(`unexpected argument: ${token}`);
+  }
+
+  validateName(name);
+  return { clients, all, name, dryRun };
+}
+
+function usageError(deps: InitDeps, message: string): number {
+  deps.stderr.write(`error: ${message}\n${INIT_USAGE}\n`);
+  return 2;
+}
+
+function uniqueIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)];
+}
+
+function selectByFlags(requested: readonly string[], all: boolean): SelectedAdapter[] {
+  const named = new Set(requested);
+  //* No ids and no --all (for example bare --dry-run) sweeps every adapter without consent,
+  //* so those adapters stay explicit: false and undetected ones are reported not-installed.
+  return ADAPTERS
+    .filter((adapter) => all || named.size === 0 || named.has(adapter.id))
+    .map((adapter) => ({ adapter, explicit: named.has(adapter.id) }));
+}
+
+async function selectInteractively(
+  home: string,
+  cwd: string,
+  deps: InitDeps,
+): Promise<SelectedAdapter[] | null> {
+  const detected = new Set(
+    ADAPTERS
+      .filter((adapter) => adapter.candidates(home, cwd).some((path) => existsSync(path)))
+      .map((adapter) => adapter.id),
+  );
+  const items: TuiItem[] = ADAPTERS.map((adapter) => ({
+    id: adapter.id,
+    label: adapter.label,
+    note: detected.has(adapter.id) ? "detected" : "not detected, will create",
+  }));
+  const select = deps.select ?? selectFromMenu;
+  const picked = await select(
+    items,
+    { input: deps.input ?? process.stdin, output: deps.stderr },
+    [...detected],
+  );
+  if (picked === null) return null;
+  const pickedIds = new Set(picked);
+  return ADAPTERS
+    .filter((adapter) => pickedIds.has(adapter.id))
+    .map((adapter) => ({ adapter, explicit: true }));
+}
+
+function stamp(now: Date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+async function createFresh(adapter: ClientAdapter, path: string, name: string, dryRun: boolean): Promise<InitResult> {
+  const entry = adapter.entry(name);
+  //* Fresh configs arrive as undefined; every adapter's merge treats that as an empty target.
+  const merged = adapter.merge(undefined, name, entry);
+  if (dryRun) return { client: adapter.id, path, action: "would-create", entry };
+  await mkdir(dirname(path), { recursive: true });
+  await adapter.write(path, merged);
+  return { client: adapter.id, path, action: "created" };
+}
+
+async function mergeTarget(adapter: ClientAdapter, path: string, name: string, dryRun: boolean): Promise<InitResult> {
+  const raw = await readFile(path, "utf8");
+  const existing = adapter.load(path);
+  const entry = adapter.entry(name);
+  const merged = adapter.merge(existing, name, entry);
+  if (adapter.serialize(merged) === raw) {
+    return { client: adapter.id, path, action: dryRun ? "would-skip" : "skipped" };
+  }
+  const existed = adapter.hasEntry(existing, name);
+  if (dryRun) {
+    return { client: adapter.id, path, action: existed ? "would-update" : "would-create", entry };
+  }
+  //* The backup is written before the target changes; a failed write must still leave the
+  //* original recoverable next to it.
+  const backup = `${path}.bak.${stamp()}`;
+  await writeFile(backup, raw, "utf8");
+  await adapter.write(path, merged);
+  return { client: adapter.id, path, action: existed ? "updated" : "created", backup };
+}
+
+async function applyAdapter(
+  adapter: ClientAdapter,
+  explicit: boolean,
+  name: string,
+  dryRun: boolean,
+  home: string,
+  cwd: string,
+): Promise<InitResult> {
+  let path = "";
+  try {
+    const candidates = adapter.candidates(home, cwd);
+    path = candidates.find((candidate) => existsSync(candidate)) ?? "";
+    if (path === "") {
+      if (!explicit) {
+        return {
+          client: adapter.id,
+          path: candidates[0] ?? "",
+          action: "not-installed",
+          hint: `no config found; pass --client ${adapter.id} to create one`,
+        };
+      }
+      path = candidates[0] ?? "";
+      if (path === "") throw new Error("adapter has no candidate paths");
+      return await createFresh(adapter, path, name, dryRun);
+    }
+    return await mergeTarget(adapter, path, name, dryRun);
+  } catch (error) {
+    return { client: adapter.id, path, action: "error", message: describe(error) };
+  }
+}
+
+async function writeAuthStatus(stderr: NodeJS.WritableStream): Promise<void> {
+  const config = loadConfig(process.env);
+  const auth = createTokenResolver(config);
+  const token = await auth.get();
+  stderr.write(`auth: ${token ? "token" : "anonymous"}\n`);
+}
+
+export async function runInit(arg: InitOptions | string[], deps: InitDeps): Promise<number> {
+  let options: InitOptions;
+  try {
+    options = Array.isArray(arg) ? parseInitArgs(arg) : arg;
+    validateName(options.name);
+    validateClients(options.clients ?? []);
+  } catch (error) {
+    if (error instanceof CliUsageError) return usageError(deps, error.message);
+    throw error;
+  }
+
+  const requested = uniqueIds(options.clients ?? []);
+  const all = options.all === true;
+  const dryRun = options.dryRun === true;
+  const interactive = deps.interactive ?? process.stdin.isTTY === true;
+  const home = deps.home ?? homedir();
+  const cwd = deps.cwd ?? process.cwd();
+
+  let selected: SelectedAdapter[];
+  if (requested.length > 0 || all || dryRun) {
+    selected = selectByFlags(requested, all);
+  } else if (interactive) {
+    const picked = await selectInteractively(home, cwd, deps);
+    if (picked === null) {
+      deps.stdout.write(`${JSON.stringify([{ action: "cancelled" }])}\n`);
+      return 0;
+    }
+    selected = picked;
+  } else {
+    return usageError(deps, "init needs --client or --all in a non-interactive session");
+  }
+
+  const results: InitResult[] = [];
+  for (const { adapter, explicit } of selected) {
+    results.push(await applyAdapter(adapter, explicit, options.name, dryRun, home, cwd));
+  }
+  deps.stdout.write(`${JSON.stringify(results)}\n`);
+  await writeAuthStatus(deps.stderr);
+  return 0;
+}

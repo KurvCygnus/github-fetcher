@@ -68,6 +68,25 @@ describe("client adapters", () => {
     expect(raw.mcp.existing).toBeDefined();
   });
 
+  it("derives Windows candidates from home, never process.env.APPDATA", () => {
+    const previous = process.env.APPDATA;
+    process.env.APPDATA = join(tmpdir(), "ghf-appdata-sentinel");
+    const home = join(tmpdir(), "ghf-home-sentinel");
+    try {
+      for (const id of ["claude-desktop", "vscode"]) {
+        const paths = getAdapter(id).candidates(home, join(tmpdir(), "ghf-cwd-sentinel"));
+        expect(paths.length).toBeGreaterThan(0);
+        expect(paths.some((path) => path.includes("ghf-appdata-sentinel"))).toBe(false);
+        if (process.platform === "win32") {
+          expect(paths.some((path) => path.startsWith(join(home, "AppData", "Roaming")))).toBe(true);
+        }
+      }
+    } finally {
+      if (previous === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = previous;
+    }
+  }, 300000);
+
   it("codex appends a TOML section and skips when present", async () => {
     const dir = await tempDir();
     const path = join(dir, "config.toml");
@@ -80,5 +99,15 @@ describe("client adapters", () => {
     expect(text).toContain('model = "gpt"');
     const again = adapter.merge(adapter.load(path), "github", adapter.entry("github"));
     expect(again).toBe(text); // idempotent: section exists, text unchanged
+    expect(adapter.hasEntry(text, "github")).toBe(true);
+    expect(adapter.hasEntry("[mcp_servers.github] # managed\n", "github")).toBe(true);
+    expect(adapter.hasEntry("[mcp_servers.github_extra]\n", "github")).toBe(false);
+    expect(adapter.hasEntry('note = "[mcp_servers.github]"\n', "github")).toBe(false);
+  });
+
+  it("keeps __proto__ names as own JSON properties", () => {
+    const adapter = getAdapter("opencode");
+    const merged = adapter.merge({}, "__proto__", adapter.entry("github"));
+    expect(JSON.stringify(merged)).toContain('"__proto__"');
   });
 });
