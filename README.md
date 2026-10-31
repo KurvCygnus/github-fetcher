@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520.18-blue)
 
-AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 18 tools over stdio for reading repositories, files, commits, issues, pull requests, releases, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
+AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 20 tools over stdio for reading repositories, files, commits, issues, pull requests, releases, repository health, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
 
 ## The problem
 
@@ -19,7 +19,7 @@ Agents read GitHub constantly (trees, files, issues, pull requests, CI), and dir
 
 ## What you get
 
-- 18 read-only MCP tools over stdio: repositories, trees, files, commits, branches, issues, pull requests, releases, search, Actions runs, and a generic read-only GET escape hatch.
+- 20 read-only MCP tools over stdio: repositories, trees, files, commits, branches, issues, pull requests, releases, repository health, search, Actions runs, and a generic read-only GET escape hatch.
 - Token reuse from the git credential store: the server reads what your git credential helper already holds (for example the GitHub CLI or Git Credential Manager), so no new secrets land on disk. `GITHUB_TOKEN` takes precedence, and with no token at all it falls back to anonymous access (60 requests per hour).
 - Proxy routing built for hostile networks: in `auto` mode API requests go direct-first while `raw.githubusercontent.com` requests go proxy-first, with `always` and `direct` overrides. Proxy candidates are tried in order: `GITHUB_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, then your git proxy config.
 - An ETag disk cache that survives restarts: entries inside their TTL are served locally, expired entries are revalidated cheaply with `If-None-Match`/`If-Modified-Since`, and a 304 answer reuses the stored body instead of downloading it again.
@@ -86,6 +86,18 @@ VS Code, in `.vscode/mcp.json`:
 
 All four clients run the same command; add an `env` block with `GITHUB_TOKEN` where the client supports one, or export the variable in the shell the client launches from.
 
+## CLI
+
+Every tool is also a subcommand of the same binary - useful for shell pipelines and for checking data without an agent in the loop.
+
+    github-fetcher releases anomalyco/opencode --per-page 5 | jq -r ".items[].tag_name"
+    github-fetcher health anthropics/claude-code --window-days 30 --pretty
+    github-fetcher file KurvCygnus/github-fetcher README.md
+
+- Bare `github-fetcher` (or `serve`) starts the MCP stdio server; a subcommand runs the CLI.
+- Output is compact JSON on stdout (`--pretty` for humans); errors are JSON on stderr with exit codes: 2 usage, 3 rate limited, 4 auth, 5 not found, 6 network, 7 upstream.
+- `--help` lists subcommands; `github-fetcher <subcommand> --help` shows one tool's flags.
+
 ## Security model
 
 - Read-only by construction: the server issues only GET requests; GraphQL and write operations are not supported, and `github_api_get` accepts arbitrary read-only GET paths, host fixed to api.github.com.
@@ -125,7 +137,8 @@ Agents receive the full input schema for every tool via `tools/list`; this is a 
 - Quota: `github_rate_limit`
 - Repository: `github_repo`, `github_tree`, `github_file`, `github_commits`, `github_branches`
 - Issues & pull requests: `github_issue`, `github_issues`, `github_pr`, `github_prs`
-- Releases: `github_release`
+- Releases: `github_release`, `github_releases`
+- Repo health: `github_repo_health`
 - Search: `github_search_repos`, `github_search_code` (token required), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 - Escape hatch: `github_api_get` (arbitrary read-only GET on api.github.com; GraphQL unsupported)
@@ -145,7 +158,7 @@ Agents receive the full input schema for every tool via `tools/list`; this is a 
 - `npm test`: run the test suite
 - `npm run typecheck`: strict TypeScript check
 - `npm run build`: production build
-- `npm run smoke`: spawns the built server over stdio and asserts that all 18 tools are listed
+- `npm run smoke`: spawns the built server over stdio and asserts that all 20 tools are listed
 - `GITHUB_SMOKE=1 npm test`: runs the suite with `GITHUB_SMOKE` set; the variable is reserved and currently unused
 
 ## License

@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520.18-blue)
 
-AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 18 个工具, 走 GitHub REST API 读取仓库, 文件, commit, issue, pull request, release, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
+AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 20 个工具, 走 GitHub REST API 读取仓库, 文件, commit, issue, pull request, release, 仓库健康, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
 
 ## 问题所在
 
@@ -19,7 +19,7 @@ Agent 访问 GitHub 的频率极高 (读目录树, 读文件, 查 issue, 查 pul
 
 ## 你能得到什么
 
-- 通过 stdio 暴露的 18 个只读 MCP 工具: 仓库, 目录树, 文件, commit, 分支, issue, pull request, release, 搜索, Actions 运行记录, 以及一个通用的只读 GET 兜底工具.
+- 通过 stdio 暴露的 20 个只读 MCP 工具: 仓库, 目录树, 文件, commit, 分支, issue, pull request, release, 仓库健康, 搜索, Actions 运行记录, 以及一个通用的只读 GET 兜底工具.
 - 复用 git credential store 里的 token: 服务器读取你的 git credential helper 已保存的凭据 (例如 GitHub CLI 或 Git Credential Manager), 不会在磁盘上新增秘密. `GITHUB_TOKEN` 优先; 完全没有 token 时退回匿名访问 (每小时 60 次请求).
 - 为恶劣网络设计的代理路由: `auto` 模式下 API 请求先直连, `raw.githubusercontent.com` 请求先走代理; 可用 `always` 和 `direct` 覆盖. 代理候选按顺序尝试: `GITHUB_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, 然后是 git 的代理配置.
 - 能在重启后存活的 ETag 磁盘缓存: 未超过 TTL 的条目直接本地返回, 过期条目用 `If-None-Match`/`If-Modified-Since` 廉价重验证, 收到 304 就复用已存的响应体, 不再重新下载.
@@ -86,6 +86,18 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 四个客户端运行的是同一条命令; 在客户端支持的位置加一个带 `GITHUB_TOKEN` 的 `env` 块, 或者在启动客户端的 shell 里 export 这个变量.
 
+## CLI
+
+每个工具同时也是同一个二进制的子命令 - 适合 shell 管道, 也适合在没有 agent 参与的情况下查看数据.
+
+    github-fetcher releases anomalyco/opencode --per-page 5 | jq -r ".items[].tag_name"
+    github-fetcher health anthropics/claude-code --window-days 30 --pretty
+    github-fetcher file KurvCygnus/github-fetcher README.md
+
+- 直接运行 `github-fetcher` (或 `serve`) 启动 MCP stdio server; 带子命令则走 CLI.
+- stdout 输出紧凑 JSON (`--pretty` 输出缩进格式, 适合人类阅读); 错误以 JSON 写到 stderr, 退出码: 2 用法, 3 速率限制, 4 认证, 5 未找到, 6 网络, 7 上游.
+- `--help` 列出子命令; `github-fetcher <subcommand> --help` 显示单个工具的参数.
+
 ## 安全模型
 
 - 从构造上只读: 服务器只发出 GET 请求; 不支持 GraphQL 和写操作, `github_api_get` 接受任意只读 GET 路径, 主机固定为 api.github.com.
@@ -125,7 +137,8 @@ Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema, 这里只
 - 配额: `github_rate_limit`
 - 仓库: `github_repo`, `github_tree`, `github_file`, `github_commits`, `github_branches`
 - Issue 与 pull request: `github_issue`, `github_issues`, `github_pr`, `github_prs`
-- Release: `github_release`
+- Release: `github_release`, `github_releases`
+- 仓库健康: `github_repo_health`
 - 搜索: `github_search_repos`, `github_search_code` (需要 token), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 - 兜底: `github_api_get` (对 api.github.com 的任意只读 GET; 不支持 GraphQL)
@@ -145,7 +158,7 @@ Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema, 这里只
 - `npm test`: 运行测试套件
 - `npm run typecheck`: 运行严格 TypeScript 检查
 - `npm run build`: 编译生产构建
-- `npm run smoke`: 通过 stdio 启动构建产物, 断言 18 个工具全部列出
+- `npm run smoke`: 通过 stdio 启动构建产物, 断言 20 个工具全部列出
 - `GITHUB_SMOKE=1 npm test`: 带着 `GITHUB_SMOKE` 运行测试套件; 该变量目前是预留变量, 未被使用
 
 ## 许可证
