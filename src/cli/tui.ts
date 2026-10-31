@@ -99,23 +99,45 @@ export async function selectFromMenu(
   let state: TuiState = { cursor: 0, selected: new Set(preselected) };
 
   return await new Promise<string[] | null>((resolve) => {
+    //* readline attaches its own data listener (which makes the stream flow) and resumes
+    //* stdin; both belong to us to undo, or the process stays alive after the menu closes.
+    const baselineDataListeners = new Set(input.listeners("data"));
+    const wasFlowing = input.readableFlowing === true;
     let settled = false;
 
-    const render = () => output.write(renderMenu(items, state));
-
-    const cleanup = () => {
+    function cleanup(): void {
       input.removeListener("keypress", onKeypress);
+      for (const listener of input.listeners("data")) {
+        if (!baselineDataListeners.has(listener)) input.removeListener("data", listener);
+      }
+      if (!wasFlowing && typeof input.pause === "function") input.pause();
+      input.removeListener("end", onAbort);
+      input.removeListener("close", onAbort);
+      input.removeListener("error", onAbort);
       if (rawMode) input.setRawMode(false);
-    };
+    }
 
-    const finish = (result: string[] | null) => {
+    function finish(result: string[] | null): void {
       if (settled) return;
       settled = true;
       cleanup();
       resolve(result);
-    };
+    }
 
-    const onKeypress = (_chunk: string, key?: { name?: string | undefined } | undefined) => {
+    function render(): void {
+      try {
+        output.write(renderMenu(items, state));
+      } catch {
+        //* A dead output must not strand the caller in raw mode; treat it like a cancel.
+        finish(null);
+      }
+    }
+
+    function onAbort(): void {
+      finish(null);
+    }
+
+    function onKeypress(_chunk: string, key?: { name?: string | undefined } | undefined): void {
       if (settled) return;
       const action = actionForKey(key?.name ?? "");
       if (action === null) return;
@@ -131,11 +153,14 @@ export async function selectFromMenu(
         return;
       }
       render();
-    };
+    }
 
     emitKeypressEvents(input);
     if (rawMode) input.setRawMode(true);
     input.on("keypress", onKeypress);
+    input.once("end", onAbort);
+    input.once("close", onAbort);
+    input.once("error", onAbort);
     render();
   });
 }
