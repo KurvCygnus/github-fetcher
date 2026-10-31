@@ -3,10 +3,13 @@ import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { parseRepo } from "./util.js";
 
+//? Field names follow the raw REST /repos payload (stargazers_count, forks_count,
+//? open_issues_count), not this tool's output names; the handler maps them to the
+//? spec 4.2 output keys stars/forks/open_issues_and_prs below.
 interface RepoPayload {
-  stars: number;
-  forks: number;
-  open_issues: number;
+  stargazers_count: number;
+  forks_count: number;
+  open_issues_count: number;
   has_issues: boolean;
   has_discussions: boolean;
   license: { spdx_id: string | null } | null;
@@ -100,8 +103,8 @@ export const healthTool = defineTool({
       repo,
       window_days: windowDays,
       generated_at: new Date().toISOString(),
-      stars: payload.data.stars,
-      forks: payload.data.forks,
+      stars: payload.data.stargazers_count,
+      forks: payload.data.forks_count,
       license: payload.data.license?.spdx_id ?? null,
       default_branch: payload.data.default_branch,
       pushed_at: payload.data.pushed_at,
@@ -110,7 +113,7 @@ export const healthTool = defineTool({
       has_discussions: payload.data.has_discussions,
       open_issues: openIssues,
       open_prs: openPrs,
-      open_issues_and_prs: payload.data.open_issues,
+      open_issues_and_prs: payload.data.open_issues_count,
       window: { opened, closed, labels: windowLabels },
       latest_release: latestRelease,
     };

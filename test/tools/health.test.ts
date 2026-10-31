@@ -4,8 +4,11 @@ import type { GitHubApi } from "../../src/core/github.js";
 import { DEFAULT_HEALTH_LABELS, healthTool, windowStartDate } from "../../src/tools/health.js";
 import { makeConfig } from "../helpers.js";
 
+//? Field names are the raw REST /repos names (stargazers_count, forks_count,
+//? open_issues_count) so the fixture catches any drift back to output-shaped
+//? keys; the output assertions below pin the mapped stars/forks values.
 const repoPayload = {
-  stars: 223356, forks: 29975, open_issues: 3813, has_issues: true, has_discussions: false,
+  stargazers_count: 223356, forks_count: 29975, open_issues_count: 3813, has_issues: true, has_discussions: false,
   license: { spdx_id: "MIT" }, default_branch: "main",
   pushed_at: "2026-10-31T02:59:27Z", created_at: "2021-01-01T00:00:00Z",
 };
