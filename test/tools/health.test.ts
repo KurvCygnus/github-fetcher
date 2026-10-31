@@ -28,8 +28,8 @@ function healthClient() {
       if (url.startsWith("/search/issues?")) {
         const q = decodeURIComponent(new URL(`https://x${url}`).searchParams.get("q") ?? "");
         //? The label branch matches every label:"..." query, not just label:"bug":
-        //? the assertion below pins all four default labels to 23, and the brief's
-        //? literal bug-only check would leave the other three on the 2441 fallback.
+        //? the assertion below pins all four default labels to 23, so a bug-only
+        //? branch would leave the other three on the 2441 fallback.
         const total = q.includes("state:closed") ? 6135 : q.includes("is:pr") ? 500 : q.includes(`label:"`) ? 23 : 2441;
         return { data: { total_count: total }, headers: new Headers(), status: 200, contentType: "application/json" };
       }

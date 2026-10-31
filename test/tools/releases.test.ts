@@ -136,8 +136,9 @@ describe("github_releases", () => {
       { repo: "o/r", include_prereleases: false },
       { client: client as unknown as GitHubApi, config: makeConfig(), authFingerprint: "abc" },
     );
-    //? Same accommodation: the tag_name order the brief asserts is pinned through
-    //? the whole envelope, so no unknown-typed access to output.items is needed.
+    //? Same accommodation as the other tool tests: the expected tag_name order
+    //? is pinned through the whole envelope, so no unknown-typed access to
+    //? output.items is needed.
     expect(output).toEqual({
       items: [
         { tag_name: "v2.2.5", name: "2.2.5", prerelease: false, draft: false, published_at: "2026-10-30T23:17:23Z", html_url: "https://github.com/o/r/releases/tag/v2.2.5" },
