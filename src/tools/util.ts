@@ -29,3 +29,8 @@ export function githubQuery(params: Record<string, string | number | undefined>)
   const text = search.toString();
   return text === "" ? "" : `?${text}`;
 }
+
+export function truncateText(text: string, max: number): { text: string; truncated: boolean } {
+  if (text.length <= max) return { text, truncated: false };
+  return { text: text.slice(0, max), truncated: true };
+}
