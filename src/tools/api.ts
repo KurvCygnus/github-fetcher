@@ -30,6 +30,15 @@ export const apiGetTool = defineTool({
     const response = await ctx.client.apiRaw(url);
     const text = new TextDecoder("utf-8").decode(response.bytes);
     const clipped = truncateText(text, ctx.config.maxFileBytes);
+    if (clipped.truncated && response.contentType.includes("application/json")) {
+      return {
+        status: response.status,
+        content_type: response.contentType,
+        body: null,
+        truncated: true,
+        hint: "response exceeded GITHUB_MCP_MAX_FILE_BYTES; narrow the query (e.g. per_page) or raise the limit",
+      };
+    }
     let body: unknown = clipped.text;
     if (response.contentType.includes("application/json")) {
       try {
