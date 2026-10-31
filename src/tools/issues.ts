@@ -142,6 +142,7 @@ export const issuesTool = defineTool({
       type: issue.pull_request === undefined ? "issue" : "pr",
       author: issue.user?.login ?? null,
       labels: labelNames(issue.labels),
+      created_at: issue.created_at,
       updated_at: issue.updated_at,
       html_url: issue.html_url,
       comments_count: issue.comments,

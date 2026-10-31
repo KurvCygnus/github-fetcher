@@ -102,6 +102,7 @@ describe("github_issues", () => {
           type: "issue",
           author: "alice",
           labels: ["bug"],
+          created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-02T00:00:00Z",
           html_url: "https://github.com/o/r/issues/7",
           comments_count: 1,
@@ -113,11 +114,15 @@ describe("github_issues", () => {
           type: "pr",
           author: "alice",
           labels: ["bug"],
+          created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-02T00:00:00Z",
           html_url: "https://github.com/o/r/pull/8",
           comments_count: 1,
         },
       ],
     });
+    //? Handler output is Record<string, unknown>, so indexing output.items cannot
+    //? typecheck; the path form asserts the same item field from the top level.
+    expect(output).toHaveProperty("items.0.created_at");
   });
 });

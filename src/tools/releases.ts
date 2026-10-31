@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { parseRepo, truncateText } from "./util.js";
 
@@ -39,11 +40,32 @@ export const releaseTool = defineTool({
     const path = input.tag
       ? `/repos/${owner}/${name}/releases/tags/${encodeURIComponent(input.tag)}`
       : `/repos/${owner}/${name}/releases/latest`;
-    const { data } = await ctx.client.api<ReleaseResponse>(path, {
-      fresh: input.fresh,
-      cacheTtlMs: 600_000,
-    });
+    //* Repositories without any release answer 404; that is an expected outcome,
+    //* so it becomes the found:false shape below and callers branch on `found`
+    //* instead of catching. Every other error keeps propagating untouched.
+    const notFound = {
+      found: false,
+      tag_name: null,
+      name: null,
+      body: null,
+      prerelease: false,
+      draft: false,
+      published_at: null,
+      html_url: null,
+      assets: [],
+    } as const;
+    let data: ReleaseResponse;
+    try {
+      ({ data } = await ctx.client.api<ReleaseResponse>(path, {
+        fresh: input.fresh,
+        cacheTtlMs: 600_000,
+      }));
+    } catch (error) {
+      if (error instanceof GithubError && error.code === "not_found") return notFound;
+      throw error;
+    }
     return {
+      found: true,
       tag_name: data.tag_name,
       name: data.name,
       body: data.body === null ? null : truncateText(data.body, ctx.config.maxFileBytes).text,

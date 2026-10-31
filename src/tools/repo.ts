@@ -11,6 +11,8 @@ interface RepoResponse {
   stargazers_count: number;
   forks_count: number;
   open_issues_count: number;
+  has_issues: boolean;
+  has_discussions: boolean;
   language: string | null;
   license: { spdx_id: string | null } | null;
   topics?: string[];
@@ -23,7 +25,7 @@ export const repoTool = defineTool({
   name: "github_repo",
   title: "GitHub repository",
   description:
-    "Read public repository metadata: description, default branch, stars, forks, open issues, language, license, topics, and timestamps.",
+    "Read public repository metadata: description, default branch, stars, forks, open issues, language, license, topics, and timestamps. open_issues includes pull requests.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
@@ -52,6 +54,8 @@ export const repoTool = defineTool({
       language: data.language,
       license: data.license?.spdx_id ?? null,
       topics: data.topics ?? [],
+      has_issues: data.has_issues,
+      has_discussions: data.has_discussions,
       archived: data.archived,
       pushed_at: data.pushed_at,
       created_at: data.created_at,
