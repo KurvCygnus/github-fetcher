@@ -4,7 +4,8 @@
   "description": "Read-only GitHub MCP server with token auth, proxy routing, and ETag caching",
   "type": "module",
   "bin": {
-    "github-fetcher": "dist/index.js"
+    "github-fetcher": "dist/index.js",
+    "ghf": "dist/index.js"
   },
   "files": [
     "dist",

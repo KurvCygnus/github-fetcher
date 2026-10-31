@@ -90,6 +90,8 @@ All four clients run the same command; add an `env` block with `GITHUB_TOKEN` wh
 
 Every tool is also a subcommand of the same binary - useful for shell pipelines and for checking data without an agent in the loop.
 
+After a global install (`npm i -g @kurvcygnus/github-fetcher`), the short alias `ghf` is registered alongside `github-fetcher`, so `ghf rate KurvCygnus/github-fetcher` works too.
+
     github-fetcher releases anomalyco/opencode --per-page 5 | jq -r ".items[].tag_name"
     github-fetcher health anthropics/claude-code --window-days 30 --pretty
     github-fetcher file KurvCygnus/github-fetcher README.md

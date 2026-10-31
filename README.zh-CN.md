@@ -90,6 +90,8 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 每个工具同时也是同一个二进制的子命令 - 适合 shell 管道, 也适合在没有 agent 参与的情况下查看数据.
 
+全局安装 (`npm i -g @kurvcygnus/github-fetcher`) 后会同时注册短别名 `ghf`, `ghf rate KurvCygnus/github-fetcher` 同样可用.
+
     github-fetcher releases anomalyco/opencode --per-page 5 | jq -r ".items[].tag_name"
     github-fetcher health anthropics/claude-code --window-days 30 --pretty
     github-fetcher file KurvCygnus/github-fetcher README.md
