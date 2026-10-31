@@ -3,7 +3,9 @@ import { branchesTool } from "./branches.js";
 import { commitsTool } from "./commits.js";
 import { fileTool } from "./file.js";
 import { issueTool, issuesTool } from "./issues.js";
+import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
+import { releaseTool } from "./releases.js";
 import { repoTool } from "./repo.js";
 import { treeTool } from "./tree.js";
 
@@ -16,4 +18,7 @@ export const tools: readonly ToolDefinition[] = [
   branchesTool,
   issueTool,
   issuesTool,
+  prTool,
+  prsTool,
+  releaseTool,
 ];
