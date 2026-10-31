@@ -74,3 +74,21 @@ export function toGithubError(error: unknown): GithubError {
   if (error instanceof Error) return new GithubError("network", error.message);
   return new GithubError("network", String(error));
 }
+
+export function decodeHttpErrorBody(
+  text: string,
+): { message: string; documentation_url?: string } {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null) {
+      const record = parsed as Record<string, unknown>;
+      const message = typeof record.message === "string" ? record.message : text;
+      const documentationUrl =
+        typeof record.documentation_url === "string" ? record.documentation_url : undefined;
+      return documentationUrl ? { message, documentation_url: documentationUrl } : { message };
+    }
+  } catch {
+    //* Error bodies from proxies or gateways are routinely plain text.
+  }
+  return { message: text };
+}

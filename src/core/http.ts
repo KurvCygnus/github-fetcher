@@ -1,7 +1,7 @@
 import { ProxyAgent, type Dispatcher } from "undici";
 import type { TokenResolver } from "./auth.js";
 import type { Config } from "./config.js";
-import { GithubError, mapHttpError } from "./errors.js";
+import { GithubError, decodeHttpErrorBody, mapHttpError } from "./errors.js";
 import type { ProxyResolution } from "./proxy.js";
 import { VERSION } from "./version.js";
 
@@ -102,11 +102,11 @@ export class HttpClient {
           await (this.options.sleep ?? sleepDefault)(delay);
           continue;
         }
-        throw mapHttpError(response.status, await response.text(), response.headers);
+        await this.raiseHttpError(response);
       }
 
       if (response.status >= 400) {
-        throw mapHttpError(response.status, await response.text(), response.headers);
+        await this.raiseHttpError(response);
       }
 
       return {
@@ -118,6 +118,16 @@ export class HttpClient {
     }
 
     throw new GithubError("network", "Too many authentication or rate-limit retries");
+  }
+
+  //* mapHttpError only takes a message string; decoding first lets the GitHub body's
+  //* own message reach users instead of a raw JSON dump, and documentation_url rides
+  //* along in details because it is not part of the message contract.
+  private async raiseHttpError(response: Response): Promise<never> {
+    const decoded = decodeHttpErrorBody(await response.text());
+    const error = mapHttpError(response.status, decoded.message, response.headers);
+    if (decoded.documentation_url) error.details.documentation_url = decoded.documentation_url;
+    throw error;
   }
 
   private async request(url: string, options: HttpGetOptions, token: string | null) {

@@ -131,6 +131,21 @@ describe("HttpClient", () => {
     });
   });
 
+  it("surfaces the decoded GitHub message and documentation url", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        { message: "Not Found", documentation_url: "https://docs.github.com/rest/releases" },
+        404,
+      ),
+    );
+    const { client } = makeClient(fetchImpl);
+    await expect(client.get("https://api.github.com/repos/a/missing")).rejects.toMatchObject({
+      code: "not_found",
+      message: "Not Found",
+      details: { status: 404, documentation_url: "https://docs.github.com/rest/releases" },
+    });
+  });
+
   it("retries a network failure and falls back to the proxy", async () => {
     const fetchImpl = vi
       .fn()

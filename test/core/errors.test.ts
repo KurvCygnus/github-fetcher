@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GithubError, mapHttpError } from "../../src/core/errors.js";
+import { GithubError, decodeHttpErrorBody, mapHttpError } from "../../src/core/errors.js";
 
 describe("GithubError", () => {
   it("serializes code, message, and details", () => {
@@ -47,5 +47,28 @@ describe("mapHttpError", () => {
       //* 1761818880 s is 2025-10-30T10:08:00.000Z; the epoch is arbitrary, only the conversion matters.
       reset_at: "2025-10-30T10:08:00.000Z",
     });
+  });
+});
+
+describe("decodeHttpErrorBody", () => {
+  it("extracts the message and documentation url from a JSON body", () => {
+    const body = JSON.stringify({
+      message: "Not Found",
+      documentation_url: "https://docs.github.com/rest",
+    });
+    expect(decodeHttpErrorBody(body)).toEqual({
+      message: "Not Found",
+      documentation_url: "https://docs.github.com/rest",
+    });
+  });
+
+  it("falls back to the raw text when the body is not JSON", () => {
+    expect(decodeHttpErrorBody("<html>gateway timeout</html>")).toEqual({
+      message: "<html>gateway timeout</html>",
+    });
+  });
+
+  it("falls back to the raw text when message is not a string", () => {
+    expect(decodeHttpErrorBody('{"message":42}')).toEqual({ message: '{"message":42}' });
   });
 });
