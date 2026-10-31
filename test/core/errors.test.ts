@@ -36,7 +36,7 @@ describe("mapHttpError", () => {
   it("maps 403 with an exhausted rate limit to rate_limited", () => {
     const headers = new Headers({
       "x-ratelimit-remaining": "0",
-      "x-ratelimit-reset": "1761818880",
+      "x-ratelimit-reset": "4102444800",
     });
     const error = mapHttpError(403, "API rate limit exceeded", headers);
     expect(error.code).toBe("rate_limited");
@@ -44,9 +44,19 @@ describe("mapHttpError", () => {
       resource: "core",
       limit: undefined,
       remaining: 0,
-      //* 1761818880 s is 2025-10-30T10:08:00.000Z; the epoch is arbitrary, only the conversion matters.
-      reset_at: "2025-10-30T10:08:00.000Z",
+      //* 4102444800 s is 2100-01-01T00:00:00.000Z; the epoch is arbitrary, only the conversion matters.
+      reset_at: "2100-01-01T00:00:00.000Z",
     });
+    //* Without a retry-after header the seconds come from the reset epoch, which
+    //* the fixture pins far in the future so the countdown stays positive.
+    expect(error.details.retry_after_s).toBeGreaterThan(0);
+  });
+
+  it("prefers a numeric retry-after header over the reset epoch", () => {
+    const headers = new Headers({ "retry-after": "2" });
+    const error = mapHttpError(429, "Too Many Requests", headers);
+    expect(error.code).toBe("rate_limited");
+    expect(error.details.retry_after_s).toBe(2);
   });
 });
 

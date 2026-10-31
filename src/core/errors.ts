@@ -40,13 +40,35 @@ function resetAtFromHeader(headers: Headers): string | null {
   return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : null;
 }
 
+//! retry-after comes in two shapes (RFC 9110): delay-seconds or an HTTP date.
+//! Precedence is numeric retry-after, then date retry-after, then the reset
+//! epoch; with none of them the wait is simply unknown and the key is omitted
+//! rather than guessed as zero.
+function retryAfterSeconds(headers: Headers): number | undefined {
+  const raw = headers.get("retry-after")?.trim();
+  if (raw !== undefined && raw !== "") {
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds)) return seconds;
+    const atMs = Date.parse(raw);
+    if (!Number.isNaN(atMs)) return Math.max(0, Math.round((atMs - Date.now()) / 1000));
+  }
+  const resetSeconds = numericHeader(headers, "x-ratelimit-reset");
+  if (resetSeconds !== undefined) {
+    return Math.max(0, resetSeconds - Math.floor(Date.now() / 1000));
+  }
+  return undefined;
+}
+
 function rateLimitDetails(headers: Headers): Record<string, unknown> {
-  return {
+  const details: Record<string, unknown> = {
     resource: "core",
     limit: numericHeader(headers, "x-ratelimit-limit"),
     remaining: numericHeader(headers, "x-ratelimit-remaining"),
     reset_at: resetAtFromHeader(headers),
   };
+  const retryAfter = retryAfterSeconds(headers);
+  if (retryAfter !== undefined) details.retry_after_s = retryAfter;
+  return details;
 }
 
 export function mapHttpError(
