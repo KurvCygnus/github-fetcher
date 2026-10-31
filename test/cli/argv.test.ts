@@ -49,7 +49,23 @@ describe("parseArgs", () => {
     expect(tagged.input).toEqual({ repo: "o/r", tag: "v1.2.3" });
   });
 
-  it("covers all twenty tools", () => {
-    expect(Object.keys(SUBCOMMANDS)).toHaveLength(20);
+  it("parses variadic compare-repos values and the new v0.3 parameters", () => {
+    const compare = parseArgs(SUBCOMMANDS["compare-repos"], ["o/a", "o/b", "o/c", "--window-days", "7"]);
+    expect(compare.input).toEqual({ repos: ["o/a", "o/b", "o/c"], window_days: 7 });
+    expect(parseArgs(SUBCOMMANDS.capabilities, []).input).toEqual({});
+    expect(parseArgs(SUBCOMMANDS.rate, ["--resource", "core"]).input).toEqual({ resource: "core" });
+    expect(parseArgs(SUBCOMMANDS.issues, ["o/r", "--type", "all", "--labels", "bug"]).input).toEqual({ repo: "o/r", type: "all", labels: "bug" });
+    expect(parseArgs(SUBCOMMANDS.issue, ["o/r", "7", "--comment-limit", "5", "--max-comment-chars", "80"]).input).toEqual({
+      repo: "o/r",
+      number: 7,
+      comment_limit: 5,
+      max_comment_chars: 80,
+    });
+    expect(parseArgs(SUBCOMMANDS["compare-repos"], ["o/a", "--fresh", "o/b"]).input).toEqual({ repos: ["o/a", "o/b"], fresh: true });
+    expect(() => parseArgs(SUBCOMMANDS["compare-repos"], [])).toThrow(CliUsageError);
+  });
+
+  it("covers all twenty-two tools", () => {
+    expect(Object.keys(SUBCOMMANDS)).toHaveLength(22);
   });
 });

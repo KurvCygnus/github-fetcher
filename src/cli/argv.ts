@@ -45,6 +45,13 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
     if (!token.startsWith("--")) {
       const slot = spec.positional[positionalIndex];
       if (!slot) throw new CliUsageError(`unexpected argument: ${token}`);
+      if (slot.kind === "string-array") {
+        //? A variadic slot keeps its index so every following bare token lands in the same
+        //? array; flags in between are consumed by the flag branch without disturbing it.
+        const values = Array.isArray(input[slot.key]) ? (input[slot.key] as string[]) : [];
+        input[slot.key] = [...values, token];
+        continue;
+      }
       input[slot.key] = convertValue(slot.kind, token);
       positionalIndex += 1;
       continue;
@@ -66,13 +73,16 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
 
   //? positionalIndex only advances past existing slots, so any slot from here on is
   //? unfilled; only a REQUIRED one is a usage error, an optional one stays absent so
-  //? the handler's own default applies.
+  //? the handler's own default applies. A variadic slot never advances the index, so it
+  //? counts as filled by the presence of its array rather than by the index.
   //? A --help/-h token must reach run.ts's help branch even without the required
   //? positionals, so only non-help parses reject missing ones; unknown flags, extra
   //? tokens and missing flag values above still throw because they are usage
   //? mistakes even under --help.
   if (!help) {
-    const missing = spec.positional.slice(positionalIndex).find((slot) => slot.required !== false);
+    const missing = spec.positional
+      .slice(positionalIndex)
+      .find((slot) => slot.required !== false && input[slot.key] === undefined);
     if (missing !== undefined) {
       throw new CliUsageError(`missing required argument: ${missing.key}`);
     }

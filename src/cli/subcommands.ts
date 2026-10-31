@@ -4,7 +4,9 @@ export interface SubcommandSpec {
   tool: string;
   //? Slots without required: false must be filled; optional slots may stay absent so the
   //? handler's own default applies (github_release's tag: omit for the latest release).
-  positional: Array<{ key: string; kind: "string" | "number"; required?: boolean }>;
+  //? A string-array slot is variadic: it consumes every following non-flag token, so it must
+  //? be the last positional in its spec.
+  positional: Array<{ key: string; kind: "string" | "number" | "string-array"; required?: boolean }>;
   flags: Record<string, FlagKind>;
 }
 
@@ -13,19 +15,21 @@ const REPO_FRESH = { fresh: "boolean" } satisfies Record<string, FlagKind>;
 //? satisfies (not a Record annotation): dot access in tests and usage stays concrete, while
 //? string-keyed lookups go through subcommandSpec below, the only place that casts to Record.
 export const SUBCOMMANDS = {
-  rate: { tool: "github_rate_limit", positional: [], flags: {} },
+  capabilities: { tool: "github_capabilities", positional: [], flags: {} },
+  rate: { tool: "github_rate_limit", positional: [], flags: { resource: "string" } },
   repo: { tool: "github_repo", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   tree: { tool: "github_tree", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", recursive: "boolean", ...REPO_FRESH } },
   file: { tool: "github_file", positional: [{ key: "repo", kind: "string" }, { key: "path", kind: "string" }], flags: { ref: "string", ...REPO_FRESH } },
   commits: { tool: "github_commits", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", author: "string", since: "string", until: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   branches: { tool: "github_branches", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
-  issue: { tool: "github_issue", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-comments": "boolean", ...REPO_FRESH } },
-  issues: { tool: "github_issues", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", labels: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
+  issue: { tool: "github_issue", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-comments": "boolean", "comment-limit": "number", "max-comment-chars": "number", ...REPO_FRESH } },
+  issues: { tool: "github_issues", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", type: "string", labels: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   pr: { tool: "github_pr", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-files": "boolean", ...REPO_FRESH } },
   prs: { tool: "github_prs", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", base: "string", head: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   release: { tool: "github_release", positional: [{ key: "repo", kind: "string" }, { key: "tag", kind: "string", required: false }], flags: { ...REPO_FRESH } },
   releases: { tool: "github_releases", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", "include-prereleases": "boolean", ...REPO_FRESH } },
   health: { tool: "github_repo_health", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", labels: "string-array", ...REPO_FRESH } },
+  "compare-repos": { tool: "github_compare_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", ...REPO_FRESH } },
   "search-repos": { tool: "github_search_repos", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   "search-code": { tool: "github_search_code", positional: [{ key: "query", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "search-issues": { tool: "github_search_issues", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
@@ -47,7 +51,12 @@ export function subcommandSpec(name: string | undefined): SubcommandSpec | undef
 export function usageFor(subcommand: string | undefined): string {
   const spec = subcommandSpec(subcommand);
   if (spec && subcommand !== undefined) {
-    const positionals = spec.positional.map((slot) => (slot.required === false ? `[${slot.key}]` : `<${slot.key}>`)).join(" ");
+    const positionals = spec.positional
+      .map((slot) => {
+        const label = slot.kind === "string-array" ? `${slot.key}...` : slot.key;
+        return slot.required === false ? `[${label}]` : `<${label}>`;
+      })
+      .join(" ");
     const flags = Object.keys(spec.flags).map((key) => `--${key}`).join(" ");
     return `github-fetcher ${subcommand} ${positionals}\n  tool: ${spec.tool}\n  flags: ${flags || "(none)"}\n`;
   }
