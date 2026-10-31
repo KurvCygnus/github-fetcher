@@ -164,4 +164,28 @@ describe("HttpClient", () => {
       code: "network",
     });
   });
+
+  //? Review round 1: redirect-policy rejections are deterministic, so the first occurrence
+  //? must surface immediately — one fetch, no route sweep, no retry sleeps.
+  it("does not retry a cross-origin redirect rejection", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(null, { status: 302, headers: { location: "https://evil.example/x" } }),
+    );
+    const { client, sleep } = makeClient(fetchImpl);
+    await expect(client.get("https://api.github.com/repos/a/b")).rejects.toMatchObject({
+      code: "network",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a missing-Location redirect rejection", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 301 }));
+    const { client, sleep } = makeClient(fetchImpl);
+    await expect(client.get("https://api.github.com/repos/a/b")).rejects.toMatchObject({
+      code: "network",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
 });

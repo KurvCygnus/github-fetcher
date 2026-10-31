@@ -64,6 +64,17 @@ export function retryDelayMs(headers: Headers, nowMs: number): number | null {
 
 const sleepDefault = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+//* Transport failures (fetch rejections) are transient and retried per route; redirect-policy
+//* rejections are deterministic — the same call's guard has already condemned the request, so
+//* re-fetching it would only add traffic and latency before the guaranteed rejection. This
+//* internal subclass marks those throws so request() can rethrow on first occurrence while
+//* keeping the public contract identical to GithubError("network", ...).
+class RedirectPolicyError extends GithubError {
+  constructor(message: string) {
+    super("network", message);
+  }
+}
+
 export class HttpClient {
   private agent: ProxyAgent | null = null;
 
@@ -119,6 +130,9 @@ export class HttpClient {
         try {
           return await this.follow(url, route, options, token);
         } catch (error) {
+          //* Deterministic policy rejections surface immediately: no second attempt,
+          //* no remaining routes, no retry sleeps.
+          if (error instanceof RedirectPolicyError) throw error;
           lastError = error;
           if (attempt === 0) await (this.options.sleep ?? sleepDefault)(250);
         }
@@ -136,14 +150,14 @@ export class HttpClient {
       const response = await this.fetchOnce(current, route, options, token);
       if (![301, 302, 303, 307, 308].includes(response.status)) return { response, url: current };
       const location = response.headers.get("location");
-      if (!location) throw new GithubError("network", "Redirect without a Location header");
+      if (!location) throw new RedirectPolicyError("Redirect without a Location header");
       const next = new URL(location, current);
       if (next.origin !== new URL(current).origin) {
-        throw new GithubError("network", `Refusing redirect outside GitHub: ${next.origin}`);
+        throw new RedirectPolicyError(`Refusing redirect outside GitHub: ${next.origin}`);
       }
       current = next.href;
     }
-    throw new GithubError("network", "Too many redirects");
+    throw new RedirectPolicyError("Too many redirects");
   }
 
   private async fetchOnce(
