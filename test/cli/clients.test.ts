@@ -105,6 +105,33 @@ describe("client adapters", () => {
     expect(adapter.hasEntry('note = "[mcp_servers.github]"\n', "github")).toBe(false);
   });
 
+  it("codex recognizes quoted and interior-whitespace headers without duplicating", () => {
+    const adapter = getAdapter("codex");
+    const texts = [
+      '[mcp_servers."github"]\ncommand = "x"\n',
+      "[ mcp_servers.github ]\ncommand = \"x\"\n",
+      "[ mcp_servers . github ] # managed\ncommand = \"x\"\n",
+    ];
+    for (const text of texts) {
+      expect(adapter.hasEntry(text, "github")).toBe(true);
+      expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+    }
+    expect(adapter.hasEntry('[mcp_servers."github_extra"]\n', "github")).toBe(false);
+  });
+
+  it("codex quotes dotted names and removes their whole section", () => {
+    const adapter = getAdapter("codex");
+    const text = 'model = "gpt"\n\n[mcp_servers."my.github"]\ncommand = "x"\nargs = ["-y"]\n\n[other]\nkey = 1\n';
+    expect(adapter.entry("my.github")).toContain('[mcp_servers."my.github"]');
+    expect(adapter.hasEntry(text, "my.github")).toBe(true);
+    expect(adapter.hasEntry("[mcp_servers.my.github]\n", "my.github")).toBe(false);
+    const removed = adapter.remove(text, "my.github");
+    expect(removed).toBe('model = "gpt"\n\n[other]\nkey = 1\n');
+    expect(adapter.remove('[mcp_servers."my.github"]\ncommand = "x"\n\n[other]\nkey = 1\n', "my.github"))
+      .toBe("[other]\nkey = 1\n");
+    expect(adapter.remove('[mcp_servers."my.github"]\ncommand = "x"\n\n', "my.github")).toBe("");
+  });
+
   it("keeps __proto__ names as own JSON properties", () => {
     const adapter = getAdapter("opencode");
     const merged = adapter.merge({}, "__proto__", adapter.entry("github"));

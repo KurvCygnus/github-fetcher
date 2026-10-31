@@ -12,6 +12,7 @@ export interface ClientAdapter {
   entry(name: string): unknown;
   hasEntry(existing: unknown, name: string): boolean;
   merge(existing: unknown, name: string, entry: unknown): unknown;
+  remove(existing: unknown, name: string): unknown;
   serialize(obj: unknown): string;
   write(path: string, obj: unknown): Promise<void>;
 }
@@ -36,6 +37,22 @@ function jsonHasEntry(existing: unknown, container: readonly string[], name: str
     level = level[key];
   }
   return isRecord(level) && Object.hasOwn(level, name);
+}
+
+function jsonRemove(existing: unknown, container: readonly string[], name: string): unknown {
+  const clone = structuredClone(existing);
+  let level: unknown = clone;
+  for (const key of container.slice(0, -1)) {
+    if (!isRecord(level) || !Object.hasOwn(level, key)) return clone;
+    level = level[key];
+  }
+  const leafKey = container.at(-1);
+  if (leafKey === undefined || !isRecord(level) || !Object.hasOwn(level, leafKey)) return clone;
+  const entries = level[leafKey];
+  if (!isRecord(entries) || !Object.hasOwn(entries, name)) return clone;
+  //? Deleting an own key only; inherited prototype names were never the configured entry.
+  delete entries[name];
+  return clone;
 }
 
 function jsonAdapter(spec: JsonSpec): ClientAdapter {
@@ -85,6 +102,9 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
         level[leafKey] = { [name]: entry };
       }
       return root;
+    },
+    remove(existing, name) {
+      return jsonRemove(existing, spec.container, name);
     },
     serialize,
     async write(path, obj) {
@@ -153,8 +173,33 @@ const vscode = jsonAdapter({
 });
 
 const [packageRunner, ...packageArgs] = PACKAGE_COMMAND;
+
+const BARE_TOML_KEY = /^[A-Za-z0-9_-]+$/;
+
+//? A dotted name must be quoted: `[mcp_servers.a.b]` is the nested table `b` under `a`.
+function codexKey(name: string): string {
+  return BARE_TOML_KEY.test(name) ? name : JSON.stringify(name);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+//* Detecting, merging and removing all use this one pattern, so every accepted spelling of the
+//* header behaves identically: bare or quoted key, interior whitespace, optional trailing comment.
+function codexHeaderPattern(name: string): RegExp {
+  const spellings = BARE_TOML_KEY.test(name) ? [name, JSON.stringify(name)] : [JSON.stringify(name)];
+  const keys = spellings.map(escapeRegExp).join("|");
+  return new RegExp(`^\\[\\s*mcp_servers\\s*\\.\\s*(?:${keys})\\s*\\]\\s*(?:#.*)?$`);
+}
+
+function codexHeaderIndex(lines: readonly string[], name: string): number {
+  const pattern = codexHeaderPattern(name);
+  return lines.findIndex((line) => pattern.test(line.trim()));
+}
+
 const codexEntry = (name: string): string => [
-  `[mcp_servers.${name}]`,
+  `[mcp_servers.${codexKey(name)}]`,
   `command = ${JSON.stringify(packageRunner)}`,
   `args = [${packageArgs.map((arg) => JSON.stringify(arg)).join(", ")}]`,
 ].join("\n");
@@ -163,17 +208,43 @@ function codexText(existing: unknown): string {
   return typeof existing === "string" ? existing : "";
 }
 
-//? A whole-line match keeps a commented-out or string-literal mention from counting as the
-//? real table header, which a substring search would accept.
 function codexHasEntry(existing: unknown, name: string): boolean {
-  const header = `[mcp_servers.${name}]`;
-  return codexText(existing).split(/\r?\n/).some((line) => {
-    const trimmed = line.trim();
-    if (trimmed === header) return true;
-    //* TOML allows a trailing comment after a table header; anything else (a longer table
-    //* name, a string literal) is not this entry.
-    return trimmed.startsWith(header) && trimmed.slice(header.length).trimStart().startsWith("#");
-  });
+  return codexHeaderIndex(codexText(existing).split(/\r?\n/), name) >= 0;
+}
+
+//? A table header starts a line; a bracket inside a value must not end the section. The one
+//? ambiguous shape left is a bare multiline array element such as `["a"]`, which a generated
+//? codex config never contains.
+function isCodexTableHeader(line: string): boolean {
+  return /^\s*\[\[?\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')/.test(line);
+}
+
+function codexRemove(existing: unknown, name: string): string {
+  const text = codexText(existing);
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  const start = codexHeaderIndex(lines, name);
+  if (start < 0) return text;
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line === undefined || isCodexTableHeader(line)) break;
+    end += 1;
+  }
+
+  const prefix = lines.slice(0, start);
+  while (prefix.length > 0 && prefix[prefix.length - 1]?.trim() === "") prefix.pop();
+  const suffix = lines.slice(end);
+  //* Rebuild the seam with exactly one blank line between top-level blocks, then collapse any
+  //* wider blank run so a removed section cannot leave three consecutive newlines behind.
+  const kept = prefix.length === 0
+    ? suffix
+    : [...prefix, ...(suffix.length > 0 ? [""] : []), ...suffix];
+  while (kept.length > 0 && kept[0]?.trim() === "") kept.shift();
+  while (kept.length > 0 && kept[kept.length - 1]?.trim() === "") kept.pop();
+  const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, `${eol}${eol}`);
+  if (body === "") return "";
+  return `${body}${eol}`;
 }
 
 const codex: ClientAdapter = {
@@ -191,6 +262,9 @@ const codex: ClientAdapter = {
     const body = text.replace(/\s*$/, "");
     //* A fresh config (no candidate file) arrives as undefined; emit just the new table.
     return body === "" ? `${codexEntry(name)}\n` : `${body}\n\n${codexEntry(name)}\n`;
+  },
+  remove(existing, name) {
+    return codexRemove(existing, name);
   },
   serialize(obj) {
     return String(obj);

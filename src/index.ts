@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { runInit } from "./cli/init.js";
+import { runRemove } from "./cli/remove.js";
 import { runCli } from "./cli/run.js";
 import { subcommandSpec, usageFor } from "./cli/subcommands.js";
 import { createGithubServer } from "./mcp/server.js";
@@ -19,6 +20,13 @@ async function main(): Promise<void> {
   }
   if (first === "init") {
     process.exitCode = await runInit(rest, {
+      stdout: process.stdout,
+      stderr: process.stderr,
+    });
+    return;
+  }
+  if (first === "remove") {
+    process.exitCode = await runRemove(rest, {
       stdout: process.stdout,
       stderr: process.stderr,
     });

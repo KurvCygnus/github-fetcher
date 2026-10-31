@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { createTokenResolver } from "../core/auth.js";
@@ -7,6 +7,15 @@ import { loadConfig } from "../core/config.js";
 import { CliUsageError } from "./argv.js";
 import { ADAPTERS } from "./clients/index.js";
 import type { ClientAdapter } from "./clients/index.js";
+import {
+  DEFAULT_NAME,
+  backupFile,
+  describeError,
+  parseClientValue,
+  uniqueIds,
+  validateClients,
+  validateName,
+} from "./clients-flow.js";
 import { selectFromMenu } from "./tui.js";
 import type { TuiDeps, TuiItem } from "./tui.js";
 
@@ -62,36 +71,6 @@ interface SelectedAdapter {
 
 export const INIT_USAGE = "Usage: github-fetcher init [--client id,id] [--all] [--name github] [--dry-run]";
 
-const NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
-const DEFAULT_NAME = "github";
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function validateName(name: string): void {
-  if (!NAME_PATTERN.test(name)) {
-    throw new CliUsageError(
-      `invalid --name: ${JSON.stringify(name)} (allowed: letters, digits, dot, underscore, hyphen)`,
-    );
-  }
-}
-
-function validateClients(ids: readonly string[]): void {
-  for (const id of ids) {
-    if (!ADAPTERS.some((adapter) => adapter.id === id)) {
-      throw new CliUsageError(`unknown client: ${id} (known: ${ADAPTERS.map((adapter) => adapter.id).join(", ")})`);
-    }
-  }
-}
-
-function parseClientValue(raw: string): string[] {
-  const ids = raw.split(",").map((part) => part.trim()).filter((part) => part !== "");
-  if (ids.length === 0) throw new CliUsageError("--client requires at least one client id");
-  validateClients(ids);
-  return ids;
-}
-
 export function parseInitArgs(argv: string[]): InitOptions {
   const clients: string[] = [];
   let all = false;
@@ -132,10 +111,6 @@ function usageError(deps: InitDeps, message: string): number {
   return 2;
 }
 
-function uniqueIds(ids: readonly string[]): string[] {
-  return [...new Set(ids)];
-}
-
 function selectByFlags(requested: readonly string[], all: boolean): SelectedAdapter[] {
   const named = new Set(requested);
   //* No ids and no --all (for example bare --dry-run) sweeps every adapter without consent,
@@ -173,11 +148,6 @@ async function selectInteractively(
     .map((adapter) => ({ adapter, explicit: true }));
 }
 
-function stamp(now: Date = new Date()): string {
-  const pad = (value: number): string => String(value).padStart(2, "0");
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
 async function createFresh(adapter: ClientAdapter, path: string, name: string, dryRun: boolean): Promise<InitResult> {
   const entry = adapter.entry(name);
   //* Fresh configs arrive as undefined; every adapter's merge treats that as an empty target.
@@ -202,8 +172,7 @@ async function mergeTarget(adapter: ClientAdapter, path: string, name: string, d
   }
   //* The backup is written before the target changes; a failed write must still leave the
   //* original recoverable next to it.
-  const backup = `${path}.bak.${stamp()}`;
-  await writeFile(backup, raw, "utf8");
+  const backup = await backupFile(path, raw);
   await adapter.write(path, merged);
   return { client: adapter.id, path, action: existed ? "updated" : "created", backup };
 }
@@ -235,7 +204,7 @@ async function applyAdapter(
     }
     return await mergeTarget(adapter, path, name, dryRun);
   } catch (error) {
-    return { client: adapter.id, path, action: "error", message: describe(error) };
+    return { client: adapter.id, path, action: "error", message: describeError(error) };
   }
 }
 
@@ -247,6 +216,12 @@ async function writeAuthStatus(stderr: NodeJS.WritableStream): Promise<void> {
 }
 
 export async function runInit(arg: InitOptions | string[], deps: InitDeps): Promise<number> {
+  //? Help wins over every validation; the parser would otherwise reject the flag as unknown.
+  if (Array.isArray(arg) && (arg.includes("--help") || arg.includes("-h"))) {
+    deps.stdout.write(`${INIT_USAGE}\n`);
+    return 0;
+  }
+
   let options: InitOptions;
   try {
     options = Array.isArray(arg) ? parseInitArgs(arg) : arg;

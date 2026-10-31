@@ -275,6 +275,25 @@ describe("runInit", () => {
     expect(existsSync(join(home, ".cursor"))).toBe(false);
   }, 300000);
 
+  it("--help prints usage to stdout and exits 0", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const out = capture();
+    const err = capture();
+
+    const code = await runInit(["--help"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      home,
+      cwd,
+      interactive: false,
+    });
+
+    expect(code).toBe(0);
+    expect(out.text()).toContain("Usage: github-fetcher init");
+    expect(err.text()).toBe("");
+  }, 300000);
+
   it("rejects unknown clients and invalid names with a usage error", async () => {
     const home = await tempDir("ghf-init-home-");
     const cwd = await tempDir("ghf-init-cwd-");
