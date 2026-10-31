@@ -50,7 +50,7 @@ try {
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const list = await request(2, "tools/list", {});
   const tools = list.result?.tools ?? [];
-  if (tools.length !== 18) throw new Error(`expected 18 tools, got ${tools.length}`);
+  if (tools.length !== 19) throw new Error(`expected 19 tools, got ${tools.length}`);
   const names = new Set(tools.map((tool) => tool.name));
   for (const required of ["github_rate_limit", "github_repo", "github_file", "github_search_code", "github_api_get"]) {
     if (!names.has(required)) throw new Error(`missing tool ${required}`);

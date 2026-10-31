@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
-import { parseRepo, truncateText } from "./util.js";
+import { listEnvelope } from "./pagination.js";
+import { githubQuery, parseRepo, truncateText } from "./util.js";
 
 interface ReleaseResponse {
   tag_name: string;
@@ -80,5 +81,51 @@ export const releaseTool = defineTool({
         browser_download_url: asset.browser_download_url,
       })),
     };
+  },
+});
+
+export const releasesTool = defineTool({
+  name: "github_releases",
+  title: "GitHub releases",
+  description:
+    "List releases newest first with tag, name, prerelease/draft flags, and dates. Release note bodies are omitted to keep responses small; use github_release for a single release's notes. With include_prereleases=false the page is filtered client-side, so has_more reflects the unfiltered Link header.",
+  inputSchema: {
+    repo: z.string().describe("Repository in owner/name form"),
+    page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    include_prereleases: z.boolean().optional().describe("Include prerelease and draft releases, default true"),
+    fresh: z.boolean().optional().describe("Bypass the local cache"),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  async handler(input, ctx) {
+    const { owner, name } = parseRepo(input.repo);
+    const page = input.page ?? 1;
+    const perPage = input.per_page ?? 20;
+    const query = githubQuery({ page, per_page: perPage });
+    const { data, headers } = await ctx.client.api<ReleaseResponse[]>(
+      `/repos/${owner}/${name}/releases${query}`,
+      { fresh: input.fresh, cacheTtlMs: 600_000 },
+    );
+    //* Filtering happens after the fetch, not in the query, so the Link header and
+    //* thus has_more/next_page keep describing the upstream pages; callers stepping
+    //* through next_page never silently skip a page that filtered to zero items.
+    const visible =
+      input.include_prereleases === false
+        ? data.filter((release) => !release.prerelease && !release.draft)
+        : data;
+    const items = visible.map((release) => ({
+      tag_name: release.tag_name,
+      name: release.name,
+      prerelease: release.prerelease,
+      draft: release.draft,
+      published_at: release.published_at,
+      html_url: release.html_url,
+    }));
+    return listEnvelope(items, page, perPage, headers.get("link"));
   },
 });
