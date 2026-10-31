@@ -174,7 +174,7 @@ Text bodies are clipped to `GITHUB_MCP_MAX_FILE_BYTES` characters (262,144 by de
 - `npm run typecheck`: run the strict TypeScript check
 - `npm run build`: compile the production build
 - `npm run smoke`: start the built server over stdio, initialize, and verify that all 18 tools are listed
-- `GITHUB_SMOKE=1 npm test`: run the test suite in smoke mode
+- `GITHUB_SMOKE=1 npm test`: run the test suite with `GITHUB_SMOKE` set; the variable is reserved and currently unused by the suite
 
 ## License
 
