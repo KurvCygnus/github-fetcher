@@ -16,6 +16,9 @@ interface IssueResponse {
   closed_at: string | null;
   comments: number;
   html_url: string;
+  //* Present only on pull request items; its presence distinguishes a PR from
+  //* an issue in list responses (same convention as the search tool's type).
+  pull_request?: Record<string, unknown> | undefined;
 }
 
 interface CommentResponse {
@@ -99,7 +102,7 @@ export const issuesTool = defineTool({
   name: "github_issues",
   title: "GitHub issues",
   description:
-    "List issues in a repository with state, label, sort, and direction filters. Pull requests are included unless the repository separates them.",
+    "List issues in a repository with state, label, sort, and direction filters. Issues and pull requests are both returned; each item's type distinguishes them.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     state: z.enum(["open", "closed", "all"]).optional().describe("Issue state, default open"),
@@ -136,6 +139,7 @@ export const issuesTool = defineTool({
       number: issue.number,
       title: issue.title,
       state: issue.state,
+      type: issue.pull_request === undefined ? "issue" : "pr",
       author: issue.user?.login ?? null,
       labels: labelNames(issue.labels),
       updated_at: issue.updated_at,

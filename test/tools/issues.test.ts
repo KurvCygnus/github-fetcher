@@ -24,6 +24,16 @@ const comment = {
   created_at: "2024-01-03T00:00:00Z",
 };
 
+//? Same shape as the issue above plus the pull_request marker the API adds to
+//? pull requests, so the list mapping pins both type values.
+const pr = {
+  ...issue,
+  number: 8,
+  title: "Fix",
+  html_url: "https://github.com/o/r/pull/8",
+  pull_request: {},
+};
+
 function client() {
   return {
     api: vi.fn(async (url: string) => ({
@@ -67,7 +77,7 @@ describe("github_issues", () => {
     //! generic api<T> signature; the assertion below inspects the same mock.
     const api = {
       api: vi.fn(async () => ({
-        data: [issue],
+        data: [issue, pr],
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
@@ -89,10 +99,22 @@ describe("github_issues", () => {
           number: 7,
           title: "Bug",
           state: "open",
+          type: "issue",
           author: "alice",
           labels: ["bug"],
           updated_at: "2024-01-02T00:00:00Z",
           html_url: "https://github.com/o/r/issues/7",
+          comments_count: 1,
+        },
+        {
+          number: 8,
+          title: "Fix",
+          state: "open",
+          type: "pr",
+          author: "alice",
+          labels: ["bug"],
+          updated_at: "2024-01-02T00:00:00Z",
+          html_url: "https://github.com/o/r/pull/8",
           comments_count: 1,
         },
       ],
