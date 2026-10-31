@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { parseRepo } from "./util.js";
 
@@ -80,13 +81,11 @@ export const healthTool = defineTool({
       );
       latestRelease = { tag_name: data.tag_name, published_at: data.published_at, prerelease: data.prerelease };
     } catch (error) {
-      //? Duck-typed code check, not instanceof GithubError: the real client signals a
-      //? missing release with GithubError code "not_found" (mapHttpError on 404) and
-      //? the offline mock with a plain Error carrying the same code property, so
-      //? matching on code covers both; any other code still propagates untouched.
-      //? Optional chaining keeps a thrown null or string rethrown as itself instead
-      //? of crashing on the property read.
-      if ((error as { code?: unknown } | null | undefined)?.code !== "not_found") throw error;
+      //* Repositories without any release answer 404; that is an expected outcome,
+      //* so it becomes latest_release: null. The catch sits after the GithubClient
+      //* boundary, which always throws real GithubErrors (mapHttpError on 404), so
+      //* instanceof is exact here; any other error keeps propagating untouched.
+      if (!(error instanceof GithubError && error.code === "not_found")) throw error;
     }
 
     const windowLabels: Record<string, number> = {};

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { GithubError } from "../../src/core/errors.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import { DEFAULT_HEALTH_LABELS, healthTool, windowStartDate } from "../../src/tools/health.js";
 import { makeConfig } from "../helpers.js";
@@ -83,7 +84,10 @@ describe("github_repo_health", () => {
           const q = decodeURIComponent(new URL(`https://x${url}`).searchParams.get("q") ?? "");
           return { data: { total_count: q.includes(`label:"priority: P1"`) ? 12 : 0 }, headers: new Headers(), status: 200, contentType: "application/json" };
         }
-        throw Object.assign(new Error("Not Found"), { code: "not_found" });
+        //? The client surfaces a 404 as GithubError("not_found"); the mock throws that
+        //? real subclass because the handler matches by instanceof at the GithubClient
+        //? boundary, so a plain Error wearing a code property would be rethrown.
+        throw new GithubError("not_found", "Not Found");
       }),
       apiRaw: vi.fn(),
       raw: vi.fn(),
