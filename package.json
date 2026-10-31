@@ -34,5 +34,26 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KurvCygnus/github-fetcher.git"
+  },
+  "homepage": "https://github.com/KurvCygnus/github-fetcher#readme",
+  "bugs": {
+    "url": "https://github.com/KurvCygnus/github-fetcher/issues"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "github",
+    "cli",
+    "agent-tools",
+    "read-only",
+    "etag-cache"
+  ],
+  "author": {
+    "name": "Kurv Cygnus"
+  },
   "license": "MIT"
 }
