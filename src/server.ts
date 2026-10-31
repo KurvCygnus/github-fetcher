@@ -11,10 +11,9 @@ import { registerTools } from "./tools/define.js";
 import { allTools } from "./tools/registry.js";
 import { VERSION } from "./version.js";
 
-//? resolveProxy's execFile parameter is required (unlike createTokenResolver's, which has a
-//? default), so the brief's literal `undefined` would fail typecheck and silently swallow the
-//? git-config proxy lookup at runtime; the same child-process adapter auth.ts uses privately
-//? is recreated here so production wiring keeps that lookup working.
+//? proxy.ts's resolveProxy requires an injected execFile function; this adapter wraps
+//? node:child_process with utf8 encoding, the caller-supplied timeout, and windowsHide,
+//? matching the ExecFileFn contract.
 const execFile: ExecFileFn = (file, args, options) =>
   new Promise((resolve, reject) => {
     const child = nodeExecFile(
