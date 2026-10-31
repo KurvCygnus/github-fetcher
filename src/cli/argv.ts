@@ -64,9 +64,10 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
     index += 1;
   }
 
-  //? positionalIndex only advances past existing slots, so "past the last one" means
-  //? every required positional was filled; an in-range index means this slot is missing.
-  const missing = spec.positional[positionalIndex];
+  //? positionalIndex only advances past existing slots, so any slot from here on is
+  //? unfilled; only a REQUIRED one is a usage error, an optional one stays absent so
+  //? the handler's own default applies.
+  const missing = spec.positional.slice(positionalIndex).find((slot) => slot.required !== false);
   if (missing !== undefined) {
     throw new CliUsageError(`missing required argument: ${missing.key}`);
   }

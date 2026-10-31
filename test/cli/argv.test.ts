@@ -10,9 +10,11 @@ describe("parseArgs", () => {
     expect(parsed.help).toBe(false);
   });
 
-  it("splits comma arrays and parses numbers", () => {
-    const parsed = parseArgs(SUBCOMMANDS.issues, ["o/r", "--labels", "bug,help-wanted", "--page", "2"]);
-    expect(parsed.input).toEqual({ repo: "o/r", labels: ["bug", "help-wanted"], page: 2 });
+  it("splits comma arrays for array flags and passes strings through for string flags", () => {
+    const health = parseArgs(SUBCOMMANDS.health, ["o/r", "--labels", "bug,help-wanted", "--window-days", "7"]);
+    expect(health.input).toEqual({ repo: "o/r", labels: ["bug", "help-wanted"], window_days: 7 });
+    const issues = parseArgs(SUBCOMMANDS.issues, ["o/r", "--labels", "bug,help-wanted", "--page", "2"]);
+    expect(issues.input).toEqual({ repo: "o/r", labels: "bug,help-wanted", page: 2 });
   });
 
   it("treats bare flags as booleans", () => {
@@ -25,6 +27,13 @@ describe("parseArgs", () => {
     expect(() => parseArgs(SUBCOMMANDS.repo, [])).toThrow(CliUsageError);
     expect(() => parseArgs(SUBCOMMANDS.repo, ["o/r", "extra"])).toThrow(CliUsageError);
     expect(() => parseArgs(SUBCOMMANDS.releases, ["o/r", "--per-page", "abc"])).toThrow(CliUsageError);
+  });
+
+  it("leaves release's optional tag absent and maps it when provided", () => {
+    const latest = parseArgs(SUBCOMMANDS.release, ["o/r"]);
+    expect(latest.input).toEqual({ repo: "o/r" });
+    const tagged = parseArgs(SUBCOMMANDS.release, ["o/r", "v1.2.3"]);
+    expect(tagged.input).toEqual({ repo: "o/r", tag: "v1.2.3" });
   });
 
   it("covers all twenty tools", () => {

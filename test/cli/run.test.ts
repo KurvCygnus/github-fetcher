@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ToolContext } from "../../src/core/context.js";
+import { GithubError } from "../../src/core/errors.js";
 import { runCli } from "../../src/cli/run.js";
 import { makeConfig } from "../helpers.js";
 
@@ -52,9 +53,11 @@ describe("runCli", () => {
     const err = capture();
     const failing: ToolContext = {
       ...ctx,
-      //? plain Error carrying a family code (not a GithubError instance) must still map
+      //? The client surfaces a 404 as GithubError("not_found"); the mock throws that real
+      //? subclass because the catch maps by instanceof, so a plain Error wearing a code
+      //? property would fall through to the network fallback instead of exit 5.
       client: {
-        api: vi.fn(async () => { throw Object.assign(new Error("Not Found"), { code: "not_found" }); }),
+        api: vi.fn(async () => { throw new GithubError("not_found", "Not Found"); }),
         apiRaw: vi.fn(),
         raw: vi.fn(),
       } as unknown as ToolContext["client"],
@@ -75,9 +78,11 @@ describe("runCli", () => {
     expect(await runCli(["repo"], { createRuntime: async () => ctx, stdout: out.stdout, stderr: err.stdout })).toBe(2);
     const authFail: ToolContext = {
       ...ctx,
-      //? plain Error carrying a family code (not a GithubError instance) must still map
+      //? The client surfaces a 401 as GithubError("auth_failed"); the mock throws that
+      //? real subclass because the catch maps by instanceof, so a plain Error wearing a
+      //? code property would fall through to the network fallback instead of exit 4.
       client: {
-        api: vi.fn(async () => { throw Object.assign(new Error("Bad credentials"), { code: "auth_failed" }); }),
+        api: vi.fn(async () => { throw new GithubError("auth_failed", "Bad credentials"); }),
         apiRaw: vi.fn(),
         raw: vi.fn(),
       } as unknown as ToolContext["client"],
@@ -95,6 +100,36 @@ describe("runCli", () => {
     });
     expect(code).toBe(2);
     expect(JSON.parse(err.text()).error.code).toBe("invalid_params");
+  });
+
+  it("resolves the latest release when the optional tag positional is omitted", async () => {
+    const out = capture();
+    const err = capture();
+    const releaseCtx: ToolContext = {
+      ...ctx,
+      client: {
+        api: vi.fn(async () => ({
+          data: {
+            tag_name: "v1.2.3", name: "v1.2.3", body: "notes", prerelease: false, draft: false,
+            published_at: "2026-01-02T00:00:00Z", html_url: "https://github.com/o/r/releases/v1.2.3",
+            assets: [],
+          },
+          headers: new Headers(),
+          status: 200,
+          contentType: "application/json",
+        })),
+        apiRaw: vi.fn(),
+        raw: vi.fn(),
+      } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["release", "o/r"], {
+      createRuntime: async () => releaseCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(releaseCtx.client.api).toHaveBeenCalledWith("/repos/o/r/releases/latest", { fresh: undefined, cacheTtlMs: 600000 });
+    expect(JSON.parse(out.text())).toMatchObject({ found: true, tag_name: "v1.2.3" });
   });
 
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
