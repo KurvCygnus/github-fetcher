@@ -4,6 +4,7 @@ import { apiGetTool } from "./api.js";
 import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
 import { commitsTool } from "./commits.js";
+import { compareReposTool } from "./compare.js";
 import { fileTool } from "./file.js";
 import { healthTool } from "./health.js";
 import { issueTool, issuesTool } from "./issues.js";
@@ -36,4 +37,5 @@ export const tools: readonly ToolDefinition[] = [
   apiGetTool,
   healthTool,
   capabilitiesTool,
+  compareReposTool,
 ];

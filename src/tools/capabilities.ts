@@ -23,6 +23,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_release: { group: "Releases", summary: "Latest or tagged release with assets; found:false when none." },
   github_releases: { group: "Releases", summary: "Lean release list newest first, notes omitted." },
   github_repo_health: { group: "Snapshot", summary: "One-call repository panorama: counts, window health, labels, latest release." },
+  github_compare_repos: { group: "Snapshot", summary: "Throttled multi-repo breadth comparison; one call for up to 20 repositories." },
   github_search_repos: { group: "Search", summary: "Repository search by GitHub query syntax." },
   github_search_code: { group: "Search", summary: "Code search; requires a token." },
   github_search_issues: { group: "Search", summary: "Issue and pull request search by GitHub query syntax." },

@@ -18,11 +18,11 @@ describe("github_capabilities", () => {
       config: makeConfig(),
       authFingerprint: "abc",
     });
-    expect(output.total).toBe(21);
+    expect(output.total).toBe(22);
     expect(Array.isArray(output.groups)).toBe(true);
     const snapshot = output.groups as Array<{ group: string; tools: { name: string; summary: string }[] }>;
     const names = snapshot.flatMap((group) => group.tools.map((tool) => tool.name));
-    expect(names).toHaveLength(21);
-    expect(new Set(names).size).toBe(21);
+    expect(names).toHaveLength(22);
+    expect(new Set(names).size).toBe(22);
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { safeCount } from "./safe-count.js";
 import { parseRepo } from "./util.js";
 
 //? Field names follow the raw REST /repos payload (stargazers_count, forks_count,
@@ -16,10 +17,6 @@ interface RepoPayload {
   default_branch: string;
   pushed_at: string;
   created_at: string;
-}
-
-interface SearchCount {
-  total_count: number;
 }
 
 interface LatestRelease {
@@ -59,36 +56,14 @@ export const healthTool = defineTool({
     const windowStart = windowStartDate(new Date(), windowDays);
     const fresh = input.fresh;
 
-    const count = async (query: string): Promise<number> => {
-      const { data } = await ctx.client.api<SearchCount>(
-        `/search/issues?q=${encodeURIComponent(query)}&per_page=1`,
-        { fresh, cacheTtlMs: 60_000 },
-      );
-      return data.total_count;
-    };
-
-    //? GitHub search answers 422 invalid_params for legitimately existing repos
-    //? whose search is restricted (e.g. block/goose); one such rejection must not
-    //? kill the whole snapshot, so that one code degrades to null ("search
-    //? unavailable"). Rate limits and network failures stay loud: only
-    //? invalid_params is caught, everything else rethrows.
-    const safeCount = async (query: string): Promise<number | null> => {
-      try {
-        return await count(query);
-      } catch (error) {
-        if (error instanceof GithubError && error.code === "invalid_params") return null;
-        throw error;
-      }
-    };
-
     const [payload, openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCounts] = await Promise.all([
       ctx.client.api<RepoPayload>(`/repos/${owner}/${name}`, { fresh, cacheTtlMs: 600_000 }),
-      safeCount(`repo:${repo} is:issue state:open`),
-      safeCount(`repo:${repo} is:pr state:open`),
-      safeCount(`repo:${repo} is:issue created:>${windowStart}`),
-      safeCount(`repo:${repo} is:issue state:open created:>${windowStart}`),
-      safeCount(`repo:${repo} is:issue state:closed closed:>${windowStart}`),
-      ...labels.map((label) => safeCount(`repo:${repo} is:issue state:open label:"${label}"`)),
+      safeCount(ctx, `repo:${repo} is:issue state:open`, fresh),
+      safeCount(ctx, `repo:${repo} is:pr state:open`, fresh),
+      safeCount(ctx, `repo:${repo} is:issue created:>${windowStart}`, fresh),
+      safeCount(ctx, `repo:${repo} is:issue state:open created:>${windowStart}`, fresh),
+      safeCount(ctx, `repo:${repo} is:issue state:closed closed:>${windowStart}`, fresh),
+      ...labels.map((label) => safeCount(ctx, `repo:${repo} is:issue state:open label:"${label}"`, fresh)),
     ]);
 
     //? Any of the 9 searches resolving null means part of the snapshot is unknown;
