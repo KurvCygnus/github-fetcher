@@ -34,10 +34,10 @@ const pr = {
   pull_request: {},
 };
 
-function client() {
+function client(comments: (typeof comment)[] = [comment]) {
   return {
     api: vi.fn(async (url: string) => ({
-      data: url.includes("/comments") ? [comment] : issue,
+      data: url.includes("/comments") ? comments : issue,
       headers: new Headers(),
       status: 200,
       contentType: "application/json",
@@ -69,24 +69,44 @@ describe("github_issue", () => {
       cacheTtlMs: 120_000,
     });
   });
+
+  it("honors comment_limit and max_comment_chars", async () => {
+    const many = client([
+      { ...comment, body: "first comment body" },
+      { ...comment, body: "second comment body" },
+      { ...comment, body: "third comment body" },
+    ]) as unknown as GitHubApi;
+    const output = await issueTool.handler(
+      { repo: "o/r", number: 7, include_comments: true, comment_limit: 2, max_comment_chars: 10 },
+      { client: many, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const comments = (output as { comments: Array<{ body: string }> }).comments;
+    expect(comments).toHaveLength(2);
+    expect(comments.map((item) => item.body)).toEqual(["second com", "third comm"]);
+    expect(comments[0]?.body).toHaveLength(10);
+  });
 });
+
+function listClient() {
+  //? Same accommodation: the mock literal is asserted to GitHubApi for the
+  //! generic api<T> signature; assertions still inspect the same mock.
+  return {
+    api: vi.fn(async () => ({
+      data: [issue, pr],
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+    })),
+    apiRaw: vi.fn(),
+    raw: vi.fn(),
+  } as unknown as GitHubApi;
+}
 
 describe("github_issues", () => {
   it("maps the list shape", async () => {
-    //? Same accommodation: the mock literal is asserted to GitHubApi for the
-    //! generic api<T> signature; the assertion below inspects the same mock.
-    const api = {
-      api: vi.fn(async () => ({
-        data: [issue, pr],
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const api = listClient();
     const output = await issuesTool.handler(
-      { repo: "o/r", state: "open", labels: "bug,help wanted" },
+      { repo: "o/r", state: "open", labels: "bug,help wanted", type: "all" },
       { client: api, config: makeConfig(), authFingerprint: "abc" },
     );
     expect(api.api).toHaveBeenCalledWith(
@@ -124,5 +144,23 @@ describe("github_issues", () => {
     //? Handler output is Record<string, unknown>, so indexing output.items cannot
     //? typecheck; the path form asserts the same item field from the top level.
     expect(output).toHaveProperty("items.0.created_at");
+  });
+
+  it("defaults to issues only, filtering PR noise", async () => {
+    const api = listClient();
+    const output = await issuesTool.handler(
+      { repo: "o/r" },
+      { client: api, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect((output as { items: Array<{ type: string }> }).items.map((item) => item.type)).toEqual(["issue"]);
+  });
+
+  it("type pr returns only pull requests", async () => {
+    const api = listClient();
+    const output = await issuesTool.handler(
+      { repo: "o/r", type: "pr" },
+      { client: api, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect((output as { items: Array<{ type: string }> }).items.map((item) => item.type)).toEqual(["pr"]);
   });
 });

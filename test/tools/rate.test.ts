@@ -38,4 +38,22 @@ describe("github_rate_limit", () => {
     );
     expect(result).toMatchObject({ auth: "anonymous" });
   });
+
+  it("filters resources when resource is given", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      { resource: "core" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(Object.keys((output as { resources: Record<string, unknown> }).resources)).toEqual(["core"]);
+  });
+
+  it("returns empty resources for an unknown resource", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      { resource: "nope" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect((output as { resources: Record<string, unknown> }).resources).toEqual({});
+  });
 });

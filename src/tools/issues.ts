@@ -52,11 +52,24 @@ export const issueTool = defineTool({
   name: "github_issue",
   title: "GitHub issue",
   description:
-    "Read one issue, or pull request, with labels and assignees. Set include_comments=true to fetch the latest 20 comments in chronological order.",
+    "Read one issue, or pull request, with labels and assignees. Set include_comments=true to fetch the latest comments in chronological order; comment_limit caps how many (default 20) and max_comment_chars truncates each body.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     number: z.number().int().positive().describe("Issue or pull request number"),
-    include_comments: z.boolean().optional().describe("Include the latest 20 comments"),
+    include_comments: z.boolean().optional().describe("Include the latest comments"),
+    comment_limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Number of latest comments to include, default 20"),
+    max_comment_chars: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Truncate each comment body to this many characters"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -86,10 +99,13 @@ export const issueTool = defineTool({
         });
         comments = last.data;
       }
-      const latest = comments.slice(-20);
+      const latest = comments.slice(-(input.comment_limit ?? 20));
       result.comments = latest.map((comment) => ({
         author: comment.user?.login ?? null,
-        body: truncateText(comment.body, ctx.config.maxFileBytes).text,
+        body: truncateText(
+          comment.body,
+          input.max_comment_chars ?? ctx.config.maxFileBytes,
+        ).text,
         created_at: comment.created_at,
       }));
       result.comments_truncated = data.comments > latest.length;
@@ -102,9 +118,10 @@ export const issuesTool = defineTool({
   name: "github_issues",
   title: "GitHub issues",
   description:
-    "List issues in a repository with state, label, sort, and direction filters. Issues and pull requests are both returned; each item's type distinguishes them. For aggregate counts over a time window, use github_repo_health instead of paging.",
+    'List issues in a repository with state, label, sort, and direction filters. Defaults to issues only; set type to "all" to include pull requests or "pr" for pull requests alone. For aggregate counts over a time window, use github_repo_health instead of paging.',
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
+    type: z.enum(["issue", "pr", "all"]).optional().describe("Item kind, default issue"),
     state: z.enum(["open", "closed", "all"]).optional().describe("Issue state, default open"),
     labels: z.string().optional().describe("Comma-separated label names"),
     sort: z.enum(["created", "updated", "comments"]).optional().describe("Sort field"),
@@ -135,7 +152,7 @@ export const issuesTool = defineTool({
       `/repos/${owner}/${name}/issues${query}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
-    const items = data.map((issue) => ({
+    const mapped = data.map((issue) => ({
       number: issue.number,
       title: issue.title,
       state: issue.state,
@@ -147,6 +164,11 @@ export const issuesTool = defineTool({
       html_url: issue.html_url,
       comments_count: issue.comments,
     }));
+    const typeFilter = input.type ?? "issue";
+    //* The type filter is client-side because the issues endpoint accepts no kind
+    //* parameter. The Link header still describes the unfiltered page, so has_more
+    //* and next_page stay accurate even when this page's items are all filtered out.
+    const items = typeFilter === "all" ? mapped : mapped.filter((item) => item.type === typeFilter);
     return listEnvelope(items, page, perPage, headers.get("link"));
   },
 });
