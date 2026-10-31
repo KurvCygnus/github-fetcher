@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "./define.js";
+import { workflowRunTool, workflowRunsTool, workflowsTool } from "./actions.js";
 import { branchesTool } from "./branches.js";
 import { commitsTool } from "./commits.js";
 import { fileTool } from "./file.js";
@@ -25,4 +26,7 @@ export const tools: readonly ToolDefinition[] = [
   searchReposTool,
   searchCodeTool,
   searchIssuesTool,
+  workflowsTool,
+  workflowRunsTool,
+  workflowRunTool,
 ];
