@@ -146,7 +146,7 @@ export const searchIssuesTool = defineTool({
   name: "github_search_issues",
   title: "GitHub issue and pull request search",
   description:
-    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name.",
+    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name. For per-repository aggregate counts, use github_repo_health.",
   inputSchema: {
     query: z.string().describe("GitHub issue search query"),
     sort: z.enum(["comments", "reactions", "created", "updated"]).optional().describe("Sort field"),

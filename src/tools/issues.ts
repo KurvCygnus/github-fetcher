@@ -102,7 +102,7 @@ export const issuesTool = defineTool({
   name: "github_issues",
   title: "GitHub issues",
   description:
-    "List issues in a repository with state, label, sort, and direction filters. Issues and pull requests are both returned; each item's type distinguishes them.",
+    "List issues in a repository with state, label, sort, and direction filters. Issues and pull requests are both returned; each item's type distinguishes them. For aggregate counts over a time window, use github_repo_health instead of paging.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     state: z.enum(["open", "closed", "all"]).optional().describe("Issue state, default open"),
