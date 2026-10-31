@@ -181,21 +181,108 @@ function codexKey(name: string): string {
   return BARE_TOML_KEY.test(name) ? name : JSON.stringify(name);
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+//* Entry generation, detection, duplicate checks and removal share this parser, so every
+//* spelling of the same key path behaves identically: bare, basic-quoted, literal-quoted,
+//* dotted, and with interior whitespace. Null means the line is not a table header.
+function parseTomlKeyPath(raw: string): string[] | null {
+  const segments: string[] = [];
+  let index = 0;
+  const skipSpace = (): void => {
+    while (index < raw.length && (raw[index] === " " || raw[index] === "\t")) index += 1;
+  };
+  skipSpace();
+  while (index < raw.length) {
+    const char = raw[index];
+    let segment: string;
+    if (char === '"') {
+      let cursor = index + 1;
+      while (cursor < raw.length) {
+        if (raw[cursor] === "\\") {
+          cursor += 2;
+          continue;
+        }
+        if (raw[cursor] === '"') break;
+        cursor += 1;
+      }
+      if (raw[cursor] !== '"') return null;
+      try {
+        segment = JSON.parse(raw.slice(index, cursor + 1)) as string;
+      } catch {
+        return null;
+      }
+      index = cursor + 1;
+    } else if (char === "'") {
+      const cursor = raw.indexOf("'", index + 1);
+      if (cursor < 0) return null;
+      segment = raw.slice(index + 1, cursor);
+      index = cursor + 1;
+    } else {
+      const match = /^[A-Za-z0-9_-]+/.exec(raw.slice(index));
+      if (match === null) return null;
+      segment = match[0];
+      index += segment.length;
+    }
+    segments.push(segment);
+    skipSpace();
+    if (index >= raw.length) break;
+    if (raw[index] !== ".") return null;
+    index += 1;
+    skipSpace();
+  }
+  return segments.length > 0 ? segments : null;
 }
 
-//* Detecting, merging and removing all use this one pattern, so every accepted spelling of the
-//* header behaves identically: bare or quoted key, interior whitespace, optional trailing comment.
-function codexHeaderPattern(name: string): RegExp {
-  const spellings = BARE_TOML_KEY.test(name) ? [name, JSON.stringify(name)] : [JSON.stringify(name)];
-  const keys = spellings.map(escapeRegExp).join("|");
-  return new RegExp(`^\\[\\s*mcp_servers\\s*\\.\\s*(?:${keys})\\s*\\]\\s*(?:#.*)?$`);
+function codexTableSegments(line: string): string[] | null {
+  const match = /^\s*\[\[?\s*(.*?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+  const inner = match?.[1];
+  if (inner === undefined) return null;
+  return parseTomlKeyPath(inner);
+}
+
+//* Multiline arrays hold lines like `["a"]` that look like quoted table keys. Tracking bracket
+//* depth keeps those lines in the current section body.
+function codexBracketDelta(line: string): number {
+  let delta = 0;
+  let quote: "\"" | "'" | null = null;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (quote === "\"") {
+      if (char === "\\") index += 1;
+      else if (char === "\"") quote = null;
+      continue;
+    }
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (char === "\"" || char === "'") quote = char;
+    else if (char === "[") delta += 1;
+    else if (char === "]") delta -= 1;
+  }
+  return delta;
 }
 
 function codexHeaderIndex(lines: readonly string[], name: string): number {
-  const pattern = codexHeaderPattern(name);
-  return lines.findIndex((line) => pattern.test(line.trim()));
+  let depth = 0;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (depth === 0) {
+      const segments = codexTableSegments(line);
+      if (segments !== null
+        && segments.length === 2
+        && segments[0] === "mcp_servers"
+        && segments[1] === name) {
+        return index;
+      }
+    }
+    depth = Math.max(0, depth + codexBracketDelta(line));
+  }
+  return -1;
+}
+
+//* Sub-tables such as `[mcp_servers.github.env]` belong to the removed entry and go with it.
+function isCodexPrefix(path: readonly string[], segments: readonly string[]): boolean {
+  return segments.length >= path.length && path.every((segment, index) => segments[index] === segment);
 }
 
 const codexEntry = (name: string): string => [
@@ -212,39 +299,43 @@ function codexHasEntry(existing: unknown, name: string): boolean {
   return codexHeaderIndex(codexText(existing).split(/\r?\n/), name) >= 0;
 }
 
-//? A table header starts a line; a bracket inside a value must not end the section. The one
-//? ambiguous shape left is a bare multiline array element such as `["a"]`, which a generated
-//? codex config never contains.
-function isCodexTableHeader(line: string): boolean {
-  return /^\s*\[\[?\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')/.test(line);
-}
-
 function codexRemove(existing: unknown, name: string): string {
   const text = codexText(existing);
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);
   const start = codexHeaderIndex(lines, name);
   if (start < 0) return text;
+  const path = ["mcp_servers", name];
   let end = start + 1;
+  let depth = 0;
   while (end < lines.length) {
-    const line = lines[end];
-    if (line === undefined || isCodexTableHeader(line)) break;
+    const line = lines[end] ?? "";
+    if (depth === 0) {
+      const segments = codexTableSegments(line);
+      if (segments !== null) {
+        if (!isCodexPrefix(path, segments)) break;
+        //* A following sub-table section belongs to the entry; consume it and keep scanning.
+        end += 1;
+        continue;
+      }
+    }
+    depth = Math.max(0, depth + codexBracketDelta(line));
     end += 1;
   }
 
   const prefix = lines.slice(0, start);
   while (prefix.length > 0 && prefix[prefix.length - 1]?.trim() === "") prefix.pop();
   const suffix = lines.slice(end);
-  //* Rebuild the seam with exactly one blank line between top-level blocks, then collapse any
-  //* wider blank run so a removed section cannot leave three consecutive newlines behind.
+  let firstSuffix = 0;
+  while (firstSuffix < suffix.length && suffix[firstSuffix]?.trim() === "") firstSuffix += 1;
+  const keptSuffix = suffix.slice(firstSuffix);
+  //* Only the seam is normalized; blank runs inside the surviving text stay byte-identical.
   const kept = prefix.length === 0
-    ? suffix
-    : [...prefix, ...(suffix.length > 0 ? [""] : []), ...suffix];
-  while (kept.length > 0 && kept[0]?.trim() === "") kept.shift();
-  while (kept.length > 0 && kept[kept.length - 1]?.trim() === "") kept.pop();
-  const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, `${eol}${eol}`);
+    ? keptSuffix
+    : [...prefix, ...(keptSuffix.length > 0 ? [""] : []), ...keptSuffix];
+  const body = kept.join(eol);
   if (body === "") return "";
-  return `${body}${eol}`;
+  return body.endsWith(eol) ? body : `${body}${eol}`;
 }
 
 const codex: ClientAdapter = {

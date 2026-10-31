@@ -111,6 +111,7 @@ describe("client adapters", () => {
       '[mcp_servers."github"]\ncommand = "x"\n',
       "[ mcp_servers.github ]\ncommand = \"x\"\n",
       "[ mcp_servers . github ] # managed\ncommand = \"x\"\n",
+      "[mcp_servers.'github'] # literal\ncommand = \"x\"\n",
     ];
     for (const text of texts) {
       expect(adapter.hasEntry(text, "github")).toBe(true);
@@ -130,6 +131,65 @@ describe("client adapters", () => {
     expect(adapter.remove('[mcp_servers."my.github"]\ncommand = "x"\n\n[other]\nkey = 1\n', "my.github"))
       .toBe("[other]\nkey = 1\n");
     expect(adapter.remove('[mcp_servers."my.github"]\ncommand = "x"\n\n', "my.github")).toBe("");
+  });
+
+  it("codex recognizes literal-quoted headers and removes them", () => {
+    const adapter = getAdapter("codex");
+    const text = "model = \"gpt\"\n\n[mcp_servers.'github']\ncommand = \"x\"\n\n[other]\nkey = 1\n";
+    expect(adapter.hasEntry(text, "github")).toBe(true);
+    expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+    expect(adapter.remove(text, "github")).toBe('model = "gpt"\n\n[other]\nkey = 1\n');
+  });
+
+  it("codex keeps multiline array elements in the body while finding the next section", () => {
+    const adapter = getAdapter("codex");
+    const text = [
+      "[mcp_servers.github]",
+      'command = "x"',
+      "values = [",
+      '  ["a"],',
+      "  [1,2],",
+      "]",
+      "",
+      "[mcp_servers.other]",
+      "values = [",
+      '  ["keep"],',
+      "]",
+      "",
+    ].join("\n");
+    const removed = adapter.remove(text, "github");
+    expect(removed).not.toContain("[mcp_servers.github]");
+    expect(removed).not.toContain('"a"');
+    expect(removed).toBe('[mcp_servers.other]\nvalues = [\n  ["keep"],\n]\n');
+  });
+
+  it("codex removes sub-tables that belong to the removed entry", () => {
+    const adapter = getAdapter("codex");
+    const text = [
+      "[mcp_servers.github]",
+      'command = "x"',
+      "",
+      "[mcp_servers.github.env]",
+      'TOKEN = "a"',
+      "",
+      "[mcp_servers.github.env.deep]",
+      "LEVEL = 2",
+      "",
+      "[mcp_servers.other]",
+      'command = "y"',
+      "",
+    ].join("\n");
+    const removed = adapter.remove(text, "github");
+    expect(removed).toBe('[mcp_servers.other]\ncommand = "y"\n');
+    expect(removed).not.toMatch(/\[mcp_servers\.github[.\]]/);
+  });
+
+  it("codex normalizes only the section seam and preserves CRLF", () => {
+    const adapter = getAdapter("codex");
+    const lf = '[mcp_servers.github]\ncommand = "x"\n\n[keep]\na = 1\n\n\nb = 2\n';
+    expect(adapter.remove(lf, "github")).toBe("[keep]\na = 1\n\n\nb = 2\n");
+    const crlf = 'model = "gpt"\r\n\r\n[mcp_servers.github]\r\ncommand = "x"\r\n\r\n[mcp_servers.other]\r\nkey = 1\r\n';
+    expect(adapter.remove(crlf, "github")).toBe('model = "gpt"\r\n\r\n[mcp_servers.other]\r\nkey = 1\r\n');
   });
 
   it("keeps __proto__ names as own JSON properties", () => {
