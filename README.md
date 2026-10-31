@@ -115,13 +115,13 @@ Routing is a fixed order with automatic fallback on transport failure. The serve
 - Backends: `GITHUB_CACHE=disk` (default) stores entries under the platform cache directory (`%LOCALAPPDATA%\github-fetcher\cache` on Windows, `~/Library/Caches/github-fetcher/cache` on macOS, `$XDG_CACHE_HOME/github-fetcher/cache` or `~/.cache/github-fetcher/cache` elsewhere); `memory` keeps entries for the current process only; `off` disables caching. `GITHUB_CACHE_DIR` overrides the disk location.
 - Keys are scoped to the credential: the cache key is derived from the request URL and a hash of the token, so different credentials never share cached bodies.
 - Fresh entries (younger than the endpoint TTL) are served without a network request. Expired entries are revalidated with `ETag`/`If-None-Match` and `Last-Modified`/`If-Modified-Since`; a 304 answer reuses the stored body without downloading it again.
-- TTLs per endpoint: workflow runs and jobs 60 seconds; commit, branch, issue, and pull request listings 120 seconds; file contents and search results 300 seconds; repository metadata, trees, and releases 600 seconds. Not-found answers are cached with the same TTL to avoid repeated misses.
-- Any tool call accepts `fresh: true` to bypass the cache entirely for that request.
+- TTLs per endpoint: workflow runs and jobs 60 seconds; commit, branch, issue, and pull request listings 120 seconds; file contents, search results, and workflow listings 300 seconds; repository metadata, trees, and releases 600 seconds. Only successful responses are cached; a not-found answer is never cached and surfaces as a `not_found` error every time.
+- Every tool except `github_rate_limit` and `github_api_get` accepts `fresh: true` to bypass the cache entirely for that request.
 - Disk entries are written with 0600 permissions (best effort) and pruned after 7 days, keeping the newest entries.
 
 ## Tools
 
-`repo` is always `owner/name`. Every tool accepts an optional `fresh` boolean to bypass the cache. Read tools that page accept `page` (1-based) and `per_page` (1-100).
+`repo` is always `owner/name`. Every tool except `github_rate_limit` and `github_api_get` accepts an optional `fresh` boolean to bypass the cache. Read tools that page accept `page` (1-based) and `per_page` (1-100).
 
 | Tool | Required arguments | Description |
 | --- | --- | --- |

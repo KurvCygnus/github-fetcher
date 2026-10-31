@@ -132,7 +132,7 @@ export class GithubClient implements GitHubApi {
     const text = new TextDecoder("utf-8").decode(response.body);
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const link = response.headers.get("link");
-    if (ttl > 0 && (response.status === 200 || response.status === 404)) {
+    if (ttl > 0 && response.status === 200) {
       await this.options.cache.set(key, {
         version: 1,
         url,
