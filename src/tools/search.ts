@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GithubError } from "../errors.js";
+import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { searchEnvelope } from "./pagination.js";
 import { githubQuery } from "./util.js";

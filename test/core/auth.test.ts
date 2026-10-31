@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTokenResolver, parseCredential, tokenFingerprint } from "../src/auth.js";
-import { makeConfig } from "./helpers.js";
+import { createTokenResolver, parseCredential, tokenFingerprint } from "../../src/core/auth.js";
+import { makeConfig } from "../helpers.js";
 
 describe("parseCredential", () => {
   it("extracts the password", () => {

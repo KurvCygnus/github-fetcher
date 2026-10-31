@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveProxy, validateProxyUrl } from "../src/proxy.js";
-import { makeConfig } from "./helpers.js";
+import { resolveProxy, validateProxyUrl } from "../../src/core/proxy.js";
+import { makeConfig } from "../helpers.js";
 
 const noGit = vi.fn(async () => {
   throw new Error("no git config");

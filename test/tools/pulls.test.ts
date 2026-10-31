@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GitHubApi } from "../../src/github.js";
+import type { GitHubApi } from "../../src/core/github.js";
 import { prTool, prsTool } from "../../src/tools/pulls.js";
 import { makeConfig } from "../helpers.js";
 

@@ -1,4 +1,4 @@
-import { GithubError } from "../errors.js";
+import { GithubError } from "../core/errors.js";
 
 //? noUncheckedIndexedAccess makes exec() capture groups string | undefined;
 //? both groups are checked in one guard instead of asserting non-null.

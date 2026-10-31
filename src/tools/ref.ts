@@ -1,4 +1,4 @@
-import type { GitHubApi } from "../github.js";
+import type { GitHubApi } from "../core/github.js";
 
 export async function resolveRef(
   client: GitHubApi,

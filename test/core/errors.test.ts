@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GithubError, mapHttpError } from "../src/errors.js";
+import { GithubError, mapHttpError } from "../../src/core/errors.js";
 
 describe("GithubError", () => {
   it("serializes code, message, and details", () => {

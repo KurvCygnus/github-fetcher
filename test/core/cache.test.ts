@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cacheKey, createCacheStore, defaultCacheDir } from "../src/cache.js";
+import { cacheKey, createCacheStore, defaultCacheDir } from "../../src/core/cache.js";
 
 const dirs: string[] = [];
 

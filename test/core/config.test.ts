@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../../src/core/config.js";
 
 describe("loadConfig", () => {
   it("returns documented defaults", () => {

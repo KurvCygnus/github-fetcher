@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { looksBinary } from "../binary.js";
-import { GithubError } from "../errors.js";
+import { looksBinary } from "../core/binary.js";
+import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { resolveRef } from "./ref.js";
 import { encodePath, githubQuery, parseRepo, truncateText } from "./util.js";

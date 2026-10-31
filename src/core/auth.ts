@@ -8,7 +8,7 @@ export type ExecFileFn = (
   options: { input?: string; timeout: number; windowsHide?: boolean },
 ) => Promise<{ stdout: string; stderr: string }>;
 
-const defaultExecFile: ExecFileFn = (file, args, options) =>
+export const defaultExecFile: ExecFileFn = (file, args, options) =>
   new Promise((resolve, reject) => {
     const child = nodeExecFile(
       file,

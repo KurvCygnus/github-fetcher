@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCacheStore } from "../src/cache.js";
-import { GithubClient } from "../src/github.js";
-import type { HttpGetOptions, HttpClient, HttpResponse } from "../src/http.js";
-import { makeConfig } from "./helpers.js";
+import { createCacheStore } from "../../src/core/cache.js";
+import { GithubClient } from "../../src/core/github.js";
+import type { HttpGetOptions, HttpClient, HttpResponse } from "../../src/core/http.js";
+import { makeConfig } from "../helpers.js";
 
 type GetLike = (url: string, options?: HttpGetOptions) => Promise<HttpResponse>;
 

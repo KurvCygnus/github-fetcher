@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createGithubServer } from "./server.js";
+import { createGithubServer } from "./mcp/server.js";
 
 async function main(): Promise<void> {
   const server = await createGithubServer();

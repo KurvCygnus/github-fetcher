@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TokenResolver } from "../src/auth.js";
-import { HttpClient, retryDelayMs, routeOrder, type FetchLike } from "../src/http.js";
-import { makeConfig } from "./helpers.js";
+import type { TokenResolver } from "../../src/core/auth.js";
+import { HttpClient, retryDelayMs, routeOrder, type FetchLike } from "../../src/core/http.js";
+import { makeConfig } from "../helpers.js";
 
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {

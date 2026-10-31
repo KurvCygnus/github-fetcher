@@ -1,4 +1,4 @@
-import type { Config } from "../src/config.js";
+import type { Config } from "../src/core/config.js";
 
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
