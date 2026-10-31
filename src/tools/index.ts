@@ -1,7 +1,19 @@
 import type { ToolDefinition } from "./define.js";
+import { branchesTool } from "./branches.js";
+import { commitsTool } from "./commits.js";
 import { fileTool } from "./file.js";
+import { issueTool, issuesTool } from "./issues.js";
 import { rateLimitTool } from "./rate.js";
 import { repoTool } from "./repo.js";
 import { treeTool } from "./tree.js";
 
-export const tools: readonly ToolDefinition[] = [rateLimitTool, repoTool, treeTool, fileTool];
+export const tools: readonly ToolDefinition[] = [
+  rateLimitTool,
+  repoTool,
+  treeTool,
+  fileTool,
+  commitsTool,
+  branchesTool,
+  issueTool,
+  issuesTool,
+];

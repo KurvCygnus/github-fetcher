@@ -1,0 +1,44 @@
+import { z } from "zod";
+import { defineTool } from "./define.js";
+import { listEnvelope } from "./pagination.js";
+import { githubQuery, parseRepo } from "./util.js";
+
+interface BranchResponse {
+  name: string;
+  commit: { sha: string };
+  protected: boolean;
+}
+
+export const branchesTool = defineTool({
+  name: "github_branches",
+  title: "GitHub branches",
+  description: "List branches with their head sha and protection state.",
+  inputSchema: {
+    repo: z.string().describe("Repository in owner/name form"),
+    page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    fresh: z.boolean().optional().describe("Bypass the local cache"),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  async handler(input, ctx) {
+    const { owner, name } = parseRepo(input.repo);
+    const page = input.page ?? 1;
+    const perPage = input.per_page ?? 20;
+    const query = githubQuery({ page, per_page: perPage });
+    const { data, headers } = await ctx.client.api<BranchResponse[]>(
+      `/repos/${owner}/${name}/branches${query}`,
+      { fresh: input.fresh, cacheTtlMs: 120_000 },
+    );
+    const items = data.map((branch) => ({
+      name: branch.name,
+      sha: branch.commit.sha,
+      protected: branch.protected,
+    }));
+    return listEnvelope(items, page, perPage, headers.get("link"));
+  },
+});
