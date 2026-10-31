@@ -38,7 +38,7 @@ export const healthTool = defineTool({
   name: "github_repo_health",
   title: "GitHub repository health",
   description:
-    "One-call repository snapshot: stars, true open issue and PR counts, has_issues/has_discussions, window opened/closed and per-label open counts (search-backed), and the latest release. Costs about 10 upstream calls, 8 of them search (within the 30 requests/minute search quota).",
+    "One-call repository snapshot: stars, true open issue and PR counts, has_issues/has_discussions, window opened/closed counts and per-label open counts (search-backed), and the latest release. Window terms: opened_total = issues created inside the window (any current state); opened_still_open = the subset still open; closed = issues closed inside the window (any creation date). Costs about 10 upstream calls, 9 of them search (within the 30 requests/minute search quota).",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     window_days: z.number().int().min(1).max(365).optional().describe("Analysis window in days, default 30"),
@@ -67,14 +67,34 @@ export const healthTool = defineTool({
       return data.total_count;
     };
 
-    const [payload, openIssues, openPrs, opened, closed, ...labelCounts] = await Promise.all([
+    //? GitHub search answers 422 invalid_params for legitimately existing repos
+    //? whose search is restricted (e.g. block/goose); one such rejection must not
+    //? kill the whole snapshot, so that one code degrades to null ("search
+    //? unavailable"). Rate limits and network failures stay loud: only
+    //? invalid_params is caught, everything else rethrows.
+    const safeCount = async (query: string): Promise<number | null> => {
+      try {
+        return await count(query);
+      } catch (error) {
+        if (error instanceof GithubError && error.code === "invalid_params") return null;
+        throw error;
+      }
+    };
+
+    const [payload, openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCounts] = await Promise.all([
       ctx.client.api<RepoPayload>(`/repos/${owner}/${name}`, { fresh, cacheTtlMs: 600_000 }),
-      count(`repo:${repo} is:issue state:open`),
-      count(`repo:${repo} is:pr state:open`),
-      count(`repo:${repo} is:issue state:open created:>${windowStart}`),
-      count(`repo:${repo} is:issue state:closed closed:>${windowStart}`),
-      ...labels.map((label) => count(`repo:${repo} is:issue state:open label:"${label}"`)),
+      safeCount(`repo:${repo} is:issue state:open`),
+      safeCount(`repo:${repo} is:pr state:open`),
+      safeCount(`repo:${repo} is:issue created:>${windowStart}`),
+      safeCount(`repo:${repo} is:issue state:open created:>${windowStart}`),
+      safeCount(`repo:${repo} is:issue state:closed closed:>${windowStart}`),
+      ...labels.map((label) => safeCount(`repo:${repo} is:issue state:open label:"${label}"`)),
     ]);
+
+    //? Any of the 9 searches resolving null means part of the snapshot is unknown;
+    //? the flag lets callers distinguish "zero" from "search did not answer".
+    const searchUnavailable = [openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCounts]
+      .some((value) => value === null);
 
     let latestRelease: LatestRelease | null = null;
     try {
@@ -91,12 +111,12 @@ export const healthTool = defineTool({
       if (!(error instanceof GithubError && error.code === "not_found")) throw error;
     }
 
-    const windowLabels: Record<string, number> = {};
+    const windowLabels: Record<string, number | null> = {};
     labels.forEach((label, index) => {
-      //? noUncheckedIndexedAccess makes labelCounts[index] number | undefined;
-      //? labelCounts is the same labels list mapped over count(), so the indices
-      //? always align and the ?? 0 fallback never fires.
-      windowLabels[label] = labelCounts[index] ?? 0;
+      //? noUncheckedIndexedAccess makes labelCounts[index] number | null | undefined;
+      //? labelCounts is the same labels list mapped over safeCount(), so the indices
+      //? always align and the ?? null fallback only normalizes undefined to "unknown".
+      windowLabels[label] = labelCounts[index] ?? null;
     });
 
     return {
@@ -114,7 +134,8 @@ export const healthTool = defineTool({
       open_issues: openIssues,
       open_prs: openPrs,
       open_issues_and_prs: payload.data.open_issues_count,
-      window: { opened, closed, labels: windowLabels },
+      window: { opened_total: openedTotal, opened_still_open: openedStillOpen, closed, labels: windowLabels },
+      search_unavailable: searchUnavailable,
       latest_release: latestRelease,
     };
   },
