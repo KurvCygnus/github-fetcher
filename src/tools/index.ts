@@ -4,6 +4,7 @@ import { apiGetTool } from "./api.js";
 import { branchesTool } from "./branches.js";
 import { commitsTool } from "./commits.js";
 import { fileTool } from "./file.js";
+import { healthTool } from "./health.js";
 import { issueTool, issuesTool } from "./issues.js";
 import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
@@ -32,4 +33,5 @@ export const tools: readonly ToolDefinition[] = [
   workflowRunsTool,
   workflowRunTool,
   apiGetTool,
+  healthTool,
 ];
