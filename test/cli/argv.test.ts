@@ -29,6 +29,19 @@ describe("parseArgs", () => {
     expect(() => parseArgs(SUBCOMMANDS.releases, ["o/r", "--per-page", "abc"])).toThrow(CliUsageError);
   });
 
+  it("returns help without required positionals so per-tool --help is reachable", () => {
+    const bare = parseArgs(SUBCOMMANDS.release, ["--help"]);
+    expect(bare.help).toBe(true);
+    expect(bare.input).toEqual({});
+    expect(bare.pretty).toBe(false);
+  });
+
+  it("keeps positionals parsed before the --help token", () => {
+    const parsed = parseArgs(SUBCOMMANDS.repo, ["o/r", "--help"]);
+    expect(parsed.help).toBe(true);
+    expect(parsed.input.repo).toBe("o/r");
+  });
+
   it("leaves release's optional tag absent and maps it when provided", () => {
     const latest = parseArgs(SUBCOMMANDS.release, ["o/r"]);
     expect(latest.input).toEqual({ repo: "o/r" });
