@@ -70,6 +70,126 @@ describe("runRemove", () => {
     expect(err.text()).toBe("");
   }, 300000);
 
+  it("deletes a config made empty by removal and keeps its backup", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".cursor", "mcp.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = JSON.stringify({
+      mcpServers: {
+        github: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"], env: {} },
+      },
+    }, null, 2) + "\n";
+    await writeFile(configPath, original, "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["cursor"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    expect(existsSync(configPath)).toBe(false);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({ client: "cursor", path: configPath, action: "removed" });
+    expect(typeof entries[0].backup).toBe("string");
+    expect(await readFile(entries[0].backup, "utf8")).toBe(original);
+    expect(await backupsIn(dirname(configPath))).toHaveLength(1);
+  }, 300000);
+
+  it("keeps configs with another top-level key or a non-empty sibling", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const cursorPath = join(home, ".cursor", "mcp.json");
+    await mkdir(dirname(cursorPath), { recursive: true });
+    await writeFile(cursorPath, JSON.stringify({
+      $schema: "https://example.test/cursor.json",
+      mcpServers: { github: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"] } },
+    }, null, 2) + "\n", "utf8");
+    const geminiPath = join(home, ".gemini", "settings.json");
+    await mkdir(dirname(geminiPath), { recursive: true });
+    await writeFile(geminiPath, JSON.stringify({
+      mcpServers: {
+        github: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"] },
+        other: { command: "npx", args: ["-y", "other"] },
+      },
+    }, null, 2) + "\n", "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["cursor", "gemini"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const writtenCursor = JSON.parse(await readFile(cursorPath, "utf8"));
+    expect(writtenCursor.$schema).toBe("https://example.test/cursor.json");
+    expect(writtenCursor.mcpServers).toEqual({});
+    const writtenGemini = JSON.parse(await readFile(geminiPath, "utf8"));
+    expect(writtenGemini.mcpServers.other).toEqual({ command: "npx", args: ["-y", "other"] });
+    expect(Object.hasOwn(writtenGemini.mcpServers, "github")).toBe(false);
+    const entries = JSON.parse(out.text());
+    expect(entries.every((entry: { action: string }) => entry.action === "removed")).toBe(true);
+  }, 300000);
+
+  it("removes a legacy entry under its resolved name", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({
+      mcp: {
+        "github-fetcher": {
+          type: "local",
+          command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+          enabled: true,
+        },
+        existing: { type: "local", command: ["x"] },
+      },
+    }, null, 2) + "\n", "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["opencode"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(Object.hasOwn(written.mcp, "github-fetcher")).toBe(false);
+    expect(written.mcp.existing).toBeDefined();
+    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "removed" });
+  }, 300000);
+
+  it("removes exactly an explicit --name without resolving a legacy entry", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({
+      mcp: {
+        custom: { type: "local", command: ["x"] },
+        "github-fetcher": {
+          type: "local",
+          command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+          enabled: true,
+        },
+      },
+    }, null, 2) + "\n", "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      ["--client", "opencode", "--name", "custom"],
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(Object.hasOwn(written.mcp, "custom")).toBe(false);
+    expect(written.mcp["github-fetcher"]).toBeDefined();
+    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "removed" });
+  }, 300000);
+
   it("reports skipped when the entry is absent without writing or backing up", async () => {
     const home = await tempDir("ghf-remove-home-");
     const cwd = await tempDir("ghf-remove-cwd-");
@@ -102,7 +222,7 @@ describe("runRemove", () => {
       "",
       "[mcp_servers.github]",
       'command = "npx"',
-      'args = ["-y", "@kurvcygnus/github-fetcher"]',
+      'args = ["-y", "@kurvcygnus/github-fetcher@latest"]',
       "",
       "[mcp_servers.other]",
       'command = "x"',
@@ -160,7 +280,10 @@ describe("runRemove", () => {
     await mkdir(dirname(opencodePath), { recursive: true });
     await writeFile(
       opencodePath,
-      JSON.stringify({ mcp: { github: { type: "local", command: ["x"] } } }, null, 2) + "\n",
+      JSON.stringify({
+        $schema: "https://opencode.ai/config.json",
+        mcp: { github: { type: "local", command: ["x"] } },
+      }, null, 2) + "\n",
       "utf8",
     );
     const out = capture();
@@ -188,7 +311,10 @@ describe("runRemove", () => {
     await mkdir(dirname(opencodePath), { recursive: true });
     await writeFile(
       opencodePath,
-      JSON.stringify({ mcp: { github: { type: "local", command: ["x"] } } }, null, 2) + "\n",
+      JSON.stringify({
+        $schema: "https://opencode.ai/config.json",
+        mcp: { github: { type: "local", command: ["x"] } },
+      }, null, 2) + "\n",
       "utf8",
     );
     const cursorPath = join(home, ".cursor", "mcp.json");
@@ -230,7 +356,7 @@ describe("runRemove", () => {
     await writeFile(cursorPath, cursorOriginal, "utf8");
     const codexPath = join(home, ".codex", "config.toml");
     await mkdir(dirname(codexPath), { recursive: true });
-    await writeFile(codexPath, '[mcp_servers.github]\ncommand = "x"\n', "utf8");
+    await writeFile(codexPath, 'model = "gpt"\n\n[mcp_servers.github]\ncommand = "x"\n', "utf8");
     const seen: { items: readonly TuiItem[]; preselected: readonly string[] } = { items: [], preselected: [] };
     const out = capture();
 

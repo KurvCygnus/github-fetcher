@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ADAPTERS, getAdapter } from "../../src/cli/clients/index.js";
+import { ADAPTERS, PACKAGE_COMMAND, getAdapter } from "../../src/cli/clients/index.js";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -21,10 +21,11 @@ describe("client adapters", () => {
     for (const required of ["opencode", "claude-desktop", "claude-code", "cursor", "vscode", "gemini", "windsurf", "codex"]) {
       expect(ids).toContain(required);
     }
+    expect(PACKAGE_COMMAND).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
     for (const adapter of ADAPTERS) {
       expect(adapter.candidates("/home/test", "/work").length).toBeGreaterThan(0);
       expect(adapter.label.length).toBeGreaterThan(0);
-      expect(JSON.stringify(adapter.entry("github"))).toContain("@kurvcygnus/github-fetcher");
+      expect(JSON.stringify(adapter.entry("github"))).toContain("@kurvcygnus/github-fetcher@latest");
     }
     expect(() => getAdapter("missing")).toThrow("unknown client adapter: missing");
 
@@ -215,6 +216,39 @@ describe("client adapters", () => {
     const literal = "note = '''\n[mcp_servers.github]\n'''\n\n[mcp_servers.other]\ncommand = \"y\"\n";
     expect(adapter.hasEntry(literal, "github")).toBe(false);
     expect(adapter.remove(literal, "github")).toBe(literal);
+  });
+
+  it("resolves legacy entry names from package and local-dist commands", () => {
+    const opencode = getAdapter("opencode");
+    expect(opencode.resolveName({ mcp: { github: { command: ["stale"] } } }, "github")).toBe("github");
+    expect(opencode.resolveName({
+      mcp: { "github-fetcher": { type: "local", command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"] } },
+    }, "github")).toBe("github-fetcher");
+    expect(opencode.resolveName({
+      mcp: { pinned: { type: "local", command: ["npx", "-y", "@kurvcygnus/github-fetcher"] } },
+    }, "github")).toBe("pinned");
+    expect(opencode.resolveName({ mcp: { other: { command: ["node"] } } }, "github")).toBe("github");
+
+    const cursor = getAdapter("cursor");
+    expect(cursor.resolveName({
+      mcpServers: { legacy: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"] } },
+    }, "github")).toBe("legacy");
+    expect(cursor.resolveName({
+      mcpServers: { legacy: { command: "node", args: ["C:\\tools\\dist\\index.js"] } },
+    }, "github")).toBe("legacy");
+    expect(getAdapter("codex").resolveName("[mcp_servers.legacy]\n", "github")).toBe("github");
+  });
+
+  it("detects empty configs without discarding surviving keys", () => {
+    const opencode = getAdapter("opencode");
+    expect(opencode.isEmpty({ mcp: {} })).toBe(true);
+    expect(opencode.isEmpty({ mcp: {}, $schema: "x" })).toBe(false);
+    expect(opencode.isEmpty({ mcp: { other: { command: ["x"] } } })).toBe(false);
+    expect(getAdapter("cursor").isEmpty({ mcpServers: {} })).toBe(true);
+    expect(getAdapter("cursor").isEmpty({ mcpServers: { other: { command: "x" } } })).toBe(false);
+    expect(getAdapter("codex").isEmpty("")).toBe(true);
+    expect(getAdapter("codex").isEmpty("  \n")).toBe(true);
+    expect(getAdapter("codex").isEmpty('model = "gpt"\n')).toBe(false);
   });
 
   it("keeps __proto__ names as own JSON properties", () => {

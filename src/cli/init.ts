@@ -23,6 +23,7 @@ export interface InitOptions {
   clients?: string[] | undefined;
   all?: boolean | undefined;
   name: string;
+  nameExplicit?: boolean | undefined;
   dryRun: boolean;
 }
 
@@ -75,6 +76,7 @@ export function parseInitArgs(argv: string[]): InitOptions {
   const clients: string[] = [];
   let all = false;
   let name = DEFAULT_NAME;
+  let nameExplicit = false;
   let dryRun = false;
 
   for (let index = 0; index < argv.length; index++) {
@@ -93,8 +95,12 @@ export function parseInitArgs(argv: string[]): InitOptions {
       if (value === undefined || value.startsWith("--")) {
         throw new CliUsageError(`flag ${token} requires a value`);
       }
-      if (token === "--client") clients.push(...parseClientValue(value));
-      else name = value;
+      if (token === "--client") {
+        clients.push(...parseClientValue(value));
+      } else {
+        name = value;
+        nameExplicit = true;
+      }
       index += 1;
       continue;
     }
@@ -103,7 +109,7 @@ export function parseInitArgs(argv: string[]): InitOptions {
   }
 
   validateName(name);
-  return { clients, all, name, dryRun };
+  return { clients, all, name, nameExplicit, dryRun };
 }
 
 function usageError(deps: InitDeps, message: string): number {
@@ -148,26 +154,35 @@ async function selectInteractively(
     .map((adapter) => ({ adapter, explicit: true }));
 }
 
-async function createFresh(adapter: ClientAdapter, path: string, name: string, dryRun: boolean): Promise<InitResult> {
-  const entry = adapter.entry(name);
+interface ApplyContext {
+  name: string;
+  nameExplicit: boolean;
+  dryRun: boolean;
+  home: string;
+  cwd: string;
+}
+
+async function createFresh(adapter: ClientAdapter, path: string, context: ApplyContext): Promise<InitResult> {
+  const entry = adapter.entry(context.name);
   //* Fresh configs arrive as undefined; every adapter's merge treats that as an empty target.
-  const merged = adapter.merge(undefined, name, entry);
-  if (dryRun) return { client: adapter.id, path, action: "would-create", entry };
+  const merged = adapter.merge(undefined, context.name, entry);
+  if (context.dryRun) return { client: adapter.id, path, action: "would-create", entry };
   await mkdir(dirname(path), { recursive: true });
   await adapter.write(path, merged);
   return { client: adapter.id, path, action: "created" };
 }
 
-async function mergeTarget(adapter: ClientAdapter, path: string, name: string, dryRun: boolean): Promise<InitResult> {
+async function mergeTarget(adapter: ClientAdapter, path: string, context: ApplyContext): Promise<InitResult> {
   const raw = await readFile(path, "utf8");
   const existing = adapter.load(path);
+  const name = context.nameExplicit ? context.name : adapter.resolveName(existing, context.name);
   const entry = adapter.entry(name);
   const merged = adapter.merge(existing, name, entry);
   if (adapter.serialize(merged) === raw) {
-    return { client: adapter.id, path, action: dryRun ? "would-skip" : "skipped" };
+    return { client: adapter.id, path, action: context.dryRun ? "would-skip" : "skipped" };
   }
   const existed = adapter.hasEntry(existing, name);
-  if (dryRun) {
+  if (context.dryRun) {
     return { client: adapter.id, path, action: existed ? "would-update" : "would-create", entry };
   }
   //* The backup is written before the target changes; a failed write must still leave the
@@ -180,14 +195,11 @@ async function mergeTarget(adapter: ClientAdapter, path: string, name: string, d
 async function applyAdapter(
   adapter: ClientAdapter,
   explicit: boolean,
-  name: string,
-  dryRun: boolean,
-  home: string,
-  cwd: string,
+  context: ApplyContext,
 ): Promise<InitResult> {
   let path = "";
   try {
-    const candidates = adapter.candidates(home, cwd);
+    const candidates = adapter.candidates(context.home, context.cwd);
     path = candidates.find((candidate) => existsSync(candidate)) ?? "";
     if (path === "") {
       if (!explicit) {
@@ -200,9 +212,9 @@ async function applyAdapter(
       }
       path = candidates[0] ?? "";
       if (path === "") throw new Error("adapter has no candidate paths");
-      return await createFresh(adapter, path, name, dryRun);
+      return await createFresh(adapter, path, context);
     }
-    return await mergeTarget(adapter, path, name, dryRun);
+    return await mergeTarget(adapter, path, context);
   } catch (error) {
     return { client: adapter.id, path, action: "error", message: describeError(error) };
   }
@@ -253,9 +265,16 @@ export async function runInit(arg: InitOptions | string[], deps: InitDeps): Prom
     return usageError(deps, "init needs --client or --all in a non-interactive session");
   }
 
+  const context: ApplyContext = {
+    name: options.name,
+    nameExplicit: options.nameExplicit === true,
+    dryRun,
+    home,
+    cwd,
+  };
   const results: InitResult[] = [];
   for (const { adapter, explicit } of selected) {
-    results.push(await applyAdapter(adapter, explicit, options.name, dryRun, home, cwd));
+    results.push(await applyAdapter(adapter, explicit, context));
   }
   deps.stdout.write(`${JSON.stringify(results)}\n`);
   await writeAuthStatus(deps.stderr);

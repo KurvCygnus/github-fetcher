@@ -2,13 +2,15 @@ import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export const PACKAGE_COMMAND: [string, ...string[]] = ["npx", "-y", "@kurvcygnus/github-fetcher"];
+export const PACKAGE_COMMAND: [string, ...string[]] = ["npx", "-y", "@kurvcygnus/github-fetcher@latest"];
 
 export interface ClientAdapter {
   id: string;
   label: string;
   candidates(home: string, cwd: string): string[];
   load(path: string): unknown;
+  resolveName(existing: unknown, preferred: string): string;
+  isEmpty(existing: unknown): boolean;
   entry(name: string): unknown;
   hasEntry(existing: unknown, name: string): boolean;
   merge(existing: unknown, name: string, entry: unknown): unknown;
@@ -39,6 +41,51 @@ function jsonHasEntry(existing: unknown, container: readonly string[], name: str
   return isRecord(level) && Object.hasOwn(level, name);
 }
 
+function jsonEntries(existing: unknown, container: readonly string[]): Record<string, unknown> | undefined {
+  let level: unknown = existing;
+  for (const key of container) {
+    if (!isRecord(level) || !Object.hasOwn(level, key)) return undefined;
+    level = level[key];
+  }
+  return isRecord(level) ? level : undefined;
+}
+
+function referencesPackage(value: unknown): boolean {
+  const parts = Array.isArray(value) ? value : [value];
+  return parts.some((part) => typeof part === "string"
+    && (part.includes("@kurvcygnus/github-fetcher") || /dist[\\/]index\.js$/.test(part)));
+}
+
+function jsonEntryMatches(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return referencesPackage(value.command) || referencesPackage(value.args);
+}
+
+//* An existing installation may use a different key (for example the legacy `github-fetcher`
+//* from a local dist build). Reusing that key updates the real entry instead of adding a twin.
+function jsonResolveName(existing: unknown, container: readonly string[], preferred: string): string {
+  const entries = jsonEntries(existing, container);
+  if (entries === undefined) return preferred;
+  if (Object.hasOwn(entries, preferred)) return preferred;
+  for (const [key, value] of Object.entries(entries)) {
+    if (jsonEntryMatches(value)) return key;
+  }
+  return preferred;
+}
+
+//* A config is disposable only when the container path is the whole document and its leaf is
+//* empty. Any sibling key at any level means the file still carries user data.
+function jsonIsEmpty(existing: unknown, container: readonly string[]): boolean {
+  let level: unknown = existing;
+  for (const key of container) {
+    if (!isRecord(level)) return false;
+    const own = Object.keys(level);
+    if (own.length !== 1 || own[0] !== key) return false;
+    level = level[key];
+  }
+  return isRecord(level) && Object.keys(level).length === 0;
+}
+
 function jsonRemove(existing: unknown, container: readonly string[], name: string): unknown {
   const clone = structuredClone(existing);
   let level: unknown = clone;
@@ -65,6 +112,12 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
     candidates: spec.candidates,
     load(path) {
       return JSON.parse(readFileSync(path, "utf8")) as unknown;
+    },
+    resolveName(existing, preferred) {
+      return jsonResolveName(existing, spec.container, preferred);
+    },
+    isEmpty(existing) {
+      return jsonIsEmpty(existing, spec.container);
     },
     //? The name is the container key, not part of a JSON entry; the parameter stays for
     //? the TOML adapter and future client shapes.
@@ -392,6 +445,12 @@ const codex: ClientAdapter = {
   candidates: (home) => [join(home, ".codex", "config.toml")],
   load(path) {
     return readFileSync(path, "utf8");
+  },
+  resolveName(_existing, preferred) {
+    return preferred;
+  },
+  isEmpty(existing) {
+    return String(existing).trim() === "";
   },
   entry: codexEntry,
   hasEntry: codexHasEntry,

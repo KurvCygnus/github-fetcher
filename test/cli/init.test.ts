@@ -294,6 +294,60 @@ describe("runInit", () => {
     expect(err.text()).toBe("");
   }, 300000);
 
+  it("updates a legacy local-dist entry instead of adding a second name", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const legacy = {
+      type: "local",
+      command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+      enabled: true,
+    };
+    await writeFile(configPath, JSON.stringify({ mcp: { "github-fetcher": legacy } }, null, 2), "utf8");
+    const out = capture();
+
+    const code = await runInit(
+      { clients: ["opencode"], name: "github", dryRun: false },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(Object.keys(written.mcp)).toEqual(["github-fetcher"]);
+    expect(written.mcp["github-fetcher"].command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
+    expect(Object.hasOwn(written.mcp, "github")).toBe(false);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({ client: "opencode", action: "updated", path: configPath });
+    expect(await readFile(entries[0].backup, "utf8")).toContain("dist/index.js");
+  }, 300000);
+
+  it("respects an explicit --name and leaves a legacy entry untouched", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const legacy = {
+      type: "local",
+      command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+      enabled: true,
+    };
+    await writeFile(configPath, JSON.stringify({ mcp: { "github-fetcher": legacy } }, null, 2), "utf8");
+    const out = capture();
+
+    const code = await runInit(
+      ["--client", "opencode", "--name", "custom"],
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.mcp["github-fetcher"]).toEqual(legacy);
+    expect(written.mcp.custom.command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
+    expect(Object.keys(written.mcp).sort()).toEqual(["custom", "github-fetcher"]);
+    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "created" });
+  }, 300000);
+
   it("rejects unknown clients and invalid names with a usage error", async () => {
     const home = await tempDir("ghf-init-home-");
     const cwd = await tempDir("ghf-init-cwd-");
