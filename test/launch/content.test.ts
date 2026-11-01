@@ -7,7 +7,10 @@ const draftPaths = [
   ".superpowers/launch/article-draft.md",
 ] as const;
 const hasDrafts = draftPaths.every((path) => existsSync(path));
-const canCheckDrafts = hasDrafts || !process.env.CI;
+if (process.env.REQUIRE_LAUNCH_DRAFTS === "1" && !hasDrafts) {
+  throw new Error(`missing launch drafts: ${draftPaths.filter((path) => !existsSync(path)).join(", ")}`);
+}
+const canCheckDrafts = hasDrafts;
 const script = hasDrafts ? readFileSync(draftPaths[0], "utf8") : "";
 const shots = hasDrafts ? readFileSync(draftPaths[1], "utf8") : "";
 const article = hasDrafts ? readFileSync(draftPaths[2], "utf8") : "";
@@ -19,7 +22,7 @@ describe.skipIf(!canCheckDrafts)("video script", () => {
     }
     expect(script).toContain("npx -y @kurvcygnus/github-fetcher@latest init");
     expect(script).toContain("作者自荐");
-    expect(script).not.toContain("求 star");
+    expect(script).not.toMatch(/求\s*star|点个\s*star|star\s*支持/i);
   });
 
   it("has a shot list with screen and narration columns", () => {

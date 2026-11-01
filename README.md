@@ -13,7 +13,7 @@ AI coding agents spend much of their time reading GitHub, and this server makes 
 GitHub's anonymous REST quota is **60 requests per hour per egress IP**, shared by every tool on the machine. `raw.githubusercontent.com` is frequently DNS-poisoned, and bare HTTP clients that omit `User-Agent` get a 403. This server is built around those failures:
 
 - Reuses the token already in your git credential store; `GITHUB_TOKEN`/`GH_TOKEN` override it.
-- Tries `api.github.com` directly first, then your proxy; tries `raw.githubusercontent.com` through the proxy first, then falls back to the contents API.
+- Tries `api.github.com` directly first, then your proxy. File reads use the contents API for metadata and inline content, then fetch `raw.githubusercontent.com` through the proxy when GitHub omits the inline body.
 - Retries transport failures twice per route, waits out rate-limit windows up to 15 seconds, and reports the exact reset time for longer ones.
 - Caches successful responses on disk with ETag revalidation, so repeated reads do not spend quota.
 

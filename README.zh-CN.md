@@ -13,7 +13,7 @@ AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读�
 GitHub 匿名 REST 配额是**每个出口 IP 每小时 60 次**, 由机器上的所有工具共享. `raw.githubusercontent.com` 经常被 DNS 污染, 缺少 `User-Agent` 的裸 HTTP 请求会直接收到 403. 这个 server 围绕这些故障设计:
 
 - 复用 git credential store 里已有的 token; `GITHUB_TOKEN`/`GH_TOKEN` 优先.
-- API 先直连, 失败后走代理; `raw.githubusercontent.com` 先走代理, 失败后回退到 contents API.
+- API 先直连, 失败后走代理. 读取文件时先用 contents API 取元数据和内联内容, GitHub 不返回内联正文时再经代理从 `raw.githubusercontent.com` 取.
 - 每条路由对传输失败重试两次, 15 秒以内的限流窗口自动等待, 更长窗口报告精确重置时间.
 - 成功响应带 ETag 缓存到磁盘, 重复读取不消耗配额.
 
