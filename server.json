@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.KurvCygnus/github-fetcher",
+  "title": "GitHub Fetcher",
+  "description": "Read-only GitHub MCP server for unreliable networks: token reuse, proxy fallback, cache.",
+  "websiteUrl": "https://github.com/KurvCygnus/github-fetcher#readme",
+  "repository": {
+    "url": "https://github.com/KurvCygnus/github-fetcher",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@kurvcygnus/github-fetcher",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITHUB_TOKEN",
+          "description": "GitHub token; optional when git credential already stores one.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "GH_TOKEN",
+          "description": "Fallback GitHub token.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

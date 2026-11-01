@@ -1,7 +1,8 @@
 {
   "name": "@kurvcygnus/github-fetcher",
   "version": "0.2.0",
-  "description": "Read-only GitHub MCP server with token auth, proxy routing, and ETag caching",
+  "description": "Read-only GitHub MCP server for AI agents, built for unreliable networks (especially mainland China): 22 tools, token reuse, proxy fallback, ETag cache, one-command setup.",
+  "mcpName": "io.github.KurvCygnus/github-fetcher",
   "type": "module",
   "bin": {
     "github-fetcher": "dist/index.js",
@@ -11,7 +12,8 @@
     "dist",
     "README.md",
     "README.zh-CN.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20.18"
@@ -47,13 +49,22 @@
     "mcp-server",
     "model-context-protocol",
     "github",
-    "cli",
-    "agent-tools",
+    "github-mcp",
     "read-only",
-    "etag-cache"
+    "proxy",
+    "rate-limit",
+    "etag-cache",
+    "china",
+    "typescript",
+    "cli",
+    "ai-agents"
   ],
   "author": {
-    "name": "Kurv Cygnus"
+    "name": "Kurv Cygnus",
+    "url": "https://github.com/KurvCygnus"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT"
 }
