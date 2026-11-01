@@ -132,7 +132,7 @@ After a global install (`npm i -g @kurvcygnus/github-fetcher`), the short alias 
 
 - Bare `github-fetcher` (or `serve`) starts the MCP stdio server; a subcommand runs the CLI.
 - Output is compact JSON on stdout (`--pretty` for humans); errors are JSON on stderr with exit codes: 2 usage, 3 rate limited, 4 auth, 5 not found, 6 network, 7 upstream.
-- `--help` lists subcommands; `github-fetcher <subcommand> --help` shows one tool's flags.
+- `--version` (`-v`) prints the package version; `--help` lists subcommands, and `github-fetcher <subcommand> --help` shows one tool's flags.
 - `init` and `remove` manage MCP client configuration instead of querying GitHub; they are described below.
 
 ### `init`

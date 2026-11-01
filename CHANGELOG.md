@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_issues.type`, `github_issue.comment_limit`, `github_issue.max_comment_chars`, and `github_rate_limit.resource`.
 - `github-fetcher init` and `github-fetcher remove` for OpenCode, Claude Desktop, Claude Code, Cursor, VS Code, Gemini, Windsurf, and Codex.
 - CLI subcommands `capabilities` and `compare-repos`, plus the new issue/rate flags.
+- `--version`/`-v` prints the package version.
 - Client configuration adapters with backup-before-write, foreign-entry protection, empty-file cleanup, and TOML-aware Codex handling.
 - GitHub Actions release workflow with a three-platform verify matrix and npm Trusted Publishing.
 

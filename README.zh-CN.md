@@ -132,7 +132,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 - 直接运行 `github-fetcher` (或 `serve`) 启动 MCP stdio server; 带子命令则走 CLI.
 - stdout 输出紧凑 JSON (`--pretty` 输出缩进格式, 适合人类阅读); 错误以 JSON 写到 stderr, 退出码: 2 用法, 3 速率限制, 4 认证, 5 未找到, 6 网络, 7 上游.
-- `--help` 列出子命令; `github-fetcher <subcommand> --help` 显示单个工具的参数.
+- `--version` (`-v`) 输出包版本; `--help` 列出子命令, `github-fetcher <subcommand> --help` 显示单个工具的参数.
 - `init` 和 `remove` 管理 MCP 客户端配置, 不查询 GitHub; 详见下文.
 
 ### `init`

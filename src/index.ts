@@ -6,6 +6,8 @@ runEntry(process.argv.slice(2), {
   stderr: process.stderr,
 }).then(
   (code) => {
+    //? exitCode (not exit) lets the event loop drain so piped stdout always flushes;
+    //? undici keep-alive sockets may delay exit by a few seconds, which is acceptable.
     process.exitCode = code;
   },
   (error: unknown) => {
