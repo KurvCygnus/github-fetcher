@@ -8,6 +8,17 @@
 
 AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 22 个工具, 走 GitHub REST API 读取仓库, 文件, commit, issue, pull request, release, 仓库健康, 仓库横向对比, 自身的工具能力索引, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
 
+## 为中国大陆网络而构建
+
+GitHub 匿名 REST 配额是**每个出口 IP 每小时 60 次**，由机器上的所有工具共享。`raw.githubusercontent.com` 经常被 DNS 污染，缺少 `User-Agent` 的裸 HTTP 请求会直接收到 403。这个 server 围绕这些故障设计：
+
+- 复用 git credential store 里已有的 token；`GITHUB_TOKEN`/`GH_TOKEN` 优先。
+- API 先直连、失败后走代理；`raw.githubusercontent.com` 先走代理，失败后回退到 contents API。
+- 每条路由对传输失败重试两次，15 秒以内的限流窗口自动等待，更长窗口报告精确重置时间。
+- 成功响应带 ETag 缓存到磁盘，重复读取不消耗配额。
+
+不在中国大陆时默认配置同样可用；设置 `GITHUB_PROXY_MODE=direct` 可以完全跳过代理尝试。
+
 ## 问题所在
 
 Agent 访问 GitHub 的频率极高 (读目录树, 读文件, 查 issue, 查 pull request, 看 CI), 而直连访问会以各种方式失败, 浪费所有人的时间:
@@ -27,7 +38,28 @@ Agent 访问 GitHub 的频率极高 (读目录树, 读文件, 查 issue, 查 pul
 - 速率限制处理: 短窗口 (15 秒以内) 自动等待一次后重试; 长窗口则报错并给出精确的重置时间.
 - 内置客户端配置: `github-fetcher init` 为八种客户端写入 MCP 条目, 改动前先备份文件; `github-fetcher remove` 可以撤销.
 
+## 与官方 server 的对比
+
+官方 `github/github-mcp-server` 适合需要通用 GitHub MCP、写工具或远程托管的场景。这个项目做的是更窄的取舍：
+
+| 能力 | GitHub Fetcher | 官方 github-mcp-server |
+| --- | --- | --- |
+| 始终只读 | 是 | 只读模式需显式开启；默认提供写工具 |
+| 本地 stdio | 是 | 是 |
+| 远程托管 | 否 | 是 |
+| 认证 | 复用 git credential；`GITHUB_TOKEN`/`GH_TOKEN` | PAT、OAuth 或 GitHub App |
+| 中国大陆 raw/代理回退 | 是 | 没有针对中国大陆的路由 |
+| ETag 磁盘缓存 | 是 | 没有内置 ETag 缓存 |
+
+官方 server 的信息按 2026-11-01 的 README 核对。发布前需要再核对一次。
+
 ## 快速开始
+
+最快的方式是一条命令：
+
+    npx -y @kurvcygnus/github-fetcher@latest init
+
+`init` 会检测支持的客户端，复用已经指向本包的现有条目，并在修改每个文件前备份。下面的手动配置是参考形式。
 
 把对应的条目加进你客户端的 MCP 配置.
 
@@ -127,6 +159,14 @@ VS Code, 加到 `.vscode/mcp.json`:
 - 删除前会把当前文件备份, 命名与 `init` 相同 (`<path>.bak.<timestamp>`).
 - 删除最后一个条目后, 如果配置文件会变成空文件, 该文件会被删除; 结果中标记 `deleted: true`, 备份保留下来作为恢复副本. 存在顶层键或同级条目时文件会保留.
 - ZCode 有意不支持: 它不是适配器, `init` 不会提供它, `remove` 也不会读写它的配置.
+
+## 限制
+
+- 从构造上只读：不支持写操作、GraphQL、clone 或 archive 工具。
+- 22 个工具，不是完整的 GitHub API 客户端；专用工具没覆盖的只读 REST 端点用 `github_api_get`。
+- 匿名访问每小时 60 次；代码搜索需要 token。
+- 不内置代理；请自备 HTTP(S) 代理。
+- 缓存会把响应体写到磁盘；共享账号无法接受这一点时不要使用。
 
 ## 安全模型
 

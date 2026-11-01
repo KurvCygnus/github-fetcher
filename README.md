@@ -8,6 +8,17 @@
 
 AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 22 tools over stdio for reading repositories, files, commits, issues, pull requests, releases, repository health, side-by-side repository comparison, its own capability index, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
 
+## Built for mainland China networks
+
+GitHub's anonymous REST quota is **60 requests per hour per egress IP**, shared by every tool on the machine. `raw.githubusercontent.com` is frequently DNS-poisoned, and bare HTTP clients that omit `User-Agent` get a 403. This server is built around those failures:
+
+- Reuses the token already in your git credential store; `GITHUB_TOKEN`/`GH_TOKEN` override it.
+- Tries `api.github.com` directly first, then your proxy; tries `raw.githubusercontent.com` through the proxy first, then falls back to the contents API.
+- Retries transport failures twice per route, waits out rate-limit windows up to 15 seconds, and reports the exact reset time for longer ones.
+- Caches successful responses on disk with ETag revalidation, so repeated reads do not spend quota.
+
+If you are outside mainland China, the same defaults still work; set `GITHUB_PROXY_MODE=direct` to skip proxy attempts entirely.
+
 ## The problem
 
 Agents read GitHub constantly (trees, files, issues, pull requests, CI), and direct access fails in ways that waste everyone's time:
@@ -27,7 +38,28 @@ Agents read GitHub constantly (trees, files, issues, pull requests, CI), and dir
 - Rate-limit handling: short windows (up to 15 seconds) are waited out once automatically, and long ones are reported with the exact reset time.
 - Client setup built in: `github-fetcher init` writes the MCP entry for eight clients and backs up every file it edits; `github-fetcher remove` undoes it.
 
+## Comparison with the official server
+
+The official `github/github-mcp-server` is the right choice when you need a general-purpose GitHub MCP server with write tools or remote hosting. This project makes a narrower trade-off:
+
+| Capability | GitHub Fetcher | Official github-mcp-server |
+| --- | --- | --- |
+| Always read-only | Yes | Read-only mode is opt-in; write tools are available |
+| Local stdio | Yes | Yes |
+| Remote hosted option | No | Yes |
+| Auth | Reuses git credential; `GITHUB_TOKEN`/`GH_TOKEN` | PAT, OAuth, or GitHub App |
+| Raw/proxy fallback for China | Yes | No China-specific routing |
+| ETag disk cache | Yes | No built-in ETag cache |
+
+Official-server facts were checked against its README on 2026-11-01. Re-check that table before publishing this README.
+
 ## Quick start
+
+The fastest path is one command:
+
+    npx -y @kurvcygnus/github-fetcher@latest init
+
+`init` detects the supported clients, reuses an existing entry that already points at this package, and backs up every file it changes. The manual entries below are the reference form.
 
 Add the matching entry to your client's MCP configuration.
 
@@ -127,6 +159,14 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 - The current file is backed up before the removal is written, with the same `<path>.bak.<timestamp>` naming as `init`.
 - Removing the last entry deletes a configuration file that would become empty; the result reports `deleted: true`, and the backup remains as the recovery copy. A top-level key or a sibling entry keeps the file.
 - ZCode is deliberately unsupported: it is not an adapter, so `init` never offers it and `remove` never reads or writes its configuration.
+
+## Limitations
+
+- Read-only by design: no writes, no GraphQL, no clone or archive tools.
+- 22 tools, not a complete GitHub API client; use `github_api_get` for read-only REST endpoints the dedicated tools do not cover.
+- Anonymous access is 60 requests per hour; code search requires a token.
+- No proxy is bundled; bring your own HTTP(S) proxy.
+- The cache stores response bodies on disk; do not use it on a shared account if that is unacceptable.
 
 ## Security model
 
