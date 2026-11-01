@@ -51,7 +51,7 @@ The official `github/github-mcp-server` is the right choice when you need a gene
 | Raw/proxy fallback for China | Yes | No China-specific routing |
 | ETag disk cache | Yes | No built-in ETag cache |
 
-Official-server facts were checked against its README on 2026-11-01. Re-check that table before publishing this README.
+Official-server facts were checked against its README on 2026-11-01.
 
 ## Quick start
 
