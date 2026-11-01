@@ -24,8 +24,12 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   const read = async (relative) => {
     try {
       return await readFile(join(root, relative), "utf8");
-    } catch {
-      errors.push(`missing file: ${relative}`);
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : null;
+      errors.push(code === "ENOENT" ? `missing file: ${relative}` : `cannot read ${relative}: ${code ?? error}`);
       return "";
     }
   };
@@ -68,8 +72,10 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   }
   for (const [name, text] of [["README.md", en], ["README.zh-CN.md", zh]]) {
     const tools = new Set([...text.matchAll(/\bgithub_[a-z0-9_]+\b/g)].map((match) => match[0]));
-    if (tools.size < TOOL_COUNT) errors.push(`${name} lists ${tools.size} tools, expected ${TOOL_COUNT}`);
-    if (/\b(20|21) tools\b/.test(text) || /\b(20|21) 个工具/.test(text)) errors.push(`${name} has stale tool count`);
+    if (tools.size !== TOOL_COUNT) errors.push(`${name} lists ${tools.size} tools, expected ${TOOL_COUNT}`);
+    if (/\b(?!22\b)\d+\s+tools?\b/.test(text) || /\b(?!22\b)\d+\s*个工具/.test(text)) {
+      errors.push(`${name} has stale tool count`);
+    }
     for (const marker of ["TODO", "TBD", "FIXME", "example.com"]) {
       if (text.includes(marker)) errors.push(`${name} contains placeholder ${marker}`);
     }
@@ -89,21 +95,43 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   if (entry?.transport?.type !== "stdio") errors.push("server.json transport must be stdio");
 
   if (!offline) {
-    for (const url of [
-      "https://github.com/KurvCygnus/github-fetcher",
-      "https://www.npmjs.com/package/@kurvcygnus/github-fetcher",
-    ]) {
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          redirect: "follow",
-          headers: { "User-Agent": "github-fetcher-launch-check" },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!response.ok) errors.push(`link ${url} returned ${response.status}`);
-      } catch (error) {
-        errors.push(`link ${url} failed: ${error instanceof Error ? error.message : String(error)}`);
+    const proxy = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+    let fetchImpl = fetch;
+    let dispatcher;
+    if (proxy) {
+      const { ProxyAgent, fetch: proxyFetch } = await import("undici");
+      dispatcher = new ProxyAgent(proxy);
+      fetchImpl = proxyFetch;
+    }
+    try {
+      for (const link of [
+        { url: "https://github.com/KurvCygnus/github-fetcher" },
+        { url: "https://registry.npmjs.org/@kurvcygnus%2Fgithub-fetcher", json: true },
+      ]) {
+        try {
+          const response = await fetchImpl(link.url, {
+            method: "GET",
+            redirect: "follow",
+            headers: { "User-Agent": "github-fetcher-launch-check" },
+            signal: AbortSignal.timeout(10000),
+            ...(dispatcher ? { dispatcher } : {}),
+          });
+          if (!response.ok) {
+            errors.push(`link ${link.url} returned ${response.status}`);
+            continue;
+          }
+          if (link.json) {
+            const data = await response.json();
+            if (data.name !== PACKAGE_NAME) {
+              errors.push(`link ${link.url} returned package ${String(data.name)}`);
+            }
+          }
+        } catch (error) {
+          errors.push(`link ${link.url} failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
+    } finally {
+      await dispatcher?.close();
     }
   }
 
