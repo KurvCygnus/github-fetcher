@@ -192,6 +192,31 @@ describe("client adapters", () => {
     expect(adapter.remove(crlf, "github")).toBe('model = "gpt"\r\n\r\n[mcp_servers.other]\r\nkey = 1\r\n');
   });
 
+  it("codex ignores brackets in comments before the entry", () => {
+    const adapter = getAdapter("codex");
+    const text = '# see [docs\n[mcp_servers.github]\ncommand = "x"\n';
+    expect(adapter.hasEntry(text, "github")).toBe(true);
+    expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+  });
+
+  it("codex keeps the next section when a comment has an unmatched bracket", () => {
+    const adapter = getAdapter("codex");
+    const text = '[mcp_servers.github]\ncommand = "x" # [note\n\n[other]\nkey = 1\n';
+    expect(adapter.remove(text, "github")).toBe("[other]\nkey = 1\n");
+  });
+
+  it("codex ignores header-like text inside multiline strings", () => {
+    const adapter = getAdapter("codex");
+    const basic = 'note = """\n[mcp_servers.github]\n"""\n\n[mcp_servers.other]\ncommand = "y"\n';
+    expect(adapter.hasEntry(basic, "github")).toBe(false);
+    const merged = String(adapter.merge(basic, "github", adapter.entry("github")));
+    expect(merged.match(/\[mcp_servers\.github\]/g)).toHaveLength(2);
+    expect(merged).toContain("[mcp_servers.other]");
+    const literal = "note = '''\n[mcp_servers.github]\n'''\n\n[mcp_servers.other]\ncommand = \"y\"\n";
+    expect(adapter.hasEntry(literal, "github")).toBe(false);
+    expect(adapter.remove(literal, "github")).toBe(literal);
+  });
+
   it("keeps __proto__ names as own JSON properties", () => {
     const adapter = getAdapter("opencode");
     const merged = adapter.merge({}, "__proto__", adapter.entry("github"));

@@ -239,45 +239,96 @@ function codexTableSegments(line: string): string[] | null {
   return parseTomlKeyPath(inner);
 }
 
-//* Multiline arrays hold lines like `["a"]` that look like quoted table keys. Tracking bracket
-//* depth keeps those lines in the current section body.
-function codexBracketDelta(line: string): number {
-  let delta = 0;
-  let quote: "\"" | "'" | null = null;
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index];
-    if (quote === "\"") {
-      if (char === "\\") index += 1;
-      else if (char === "\"") quote = null;
-      continue;
-    }
-    if (quote === "'") {
-      if (char === "'") quote = null;
-      continue;
-    }
-    if (char === "\"" || char === "'") quote = char;
-    else if (char === "[") delta += 1;
-    else if (char === "]") delta -= 1;
+type TomlMultiline = "\"\"\"" | "'''";
+
+interface TomlScanState {
+  depth: number;
+  multiline: TomlMultiline | null;
+}
+
+const createTomlScanState = (): TomlScanState => ({ depth: 0, multiline: null });
+
+//* Advances across one TOML line and returns the code before any comment when the line started
+//* at top level. Comments and strings cannot confuse header detection or array depth:
+//* `# see [docs` is a comment, `["a"]` is an array element, and `"""` bodies span lines.
+//* Null means the line started inside a multiline string or an open array.
+function advanceTomlLine(state: TomlScanState, line: string): string | null {
+  const topLevelBefore = state.depth === 0 && state.multiline === null;
+  let index = 0;
+  let comment = line.length;
+  if (state.multiline !== null) {
+    const delimiter = state.multiline;
+    const close = line.indexOf(delimiter);
+    if (close < 0) return null;
+    index = close + delimiter.length;
+    state.multiline = null;
   }
-  return delta;
+  while (index < line.length) {
+    const char = line[index];
+    if (char === "#") {
+      comment = index;
+      break;
+    }
+    if (char === "\"" || char === "'") {
+      const triple = line.slice(index, index + 3);
+      if (triple === "\"\"\"" || triple === "'''") {
+        const close = line.indexOf(triple, index + 3);
+        if (close < 0) {
+          state.multiline = triple;
+          return topLevelBefore ? line.slice(0, comment) : null;
+        }
+        index = close + 3;
+        continue;
+      }
+      if (char === "\"") {
+        index += 1;
+        while (index < line.length) {
+          if (line[index] === "\\") {
+            index += 2;
+            continue;
+          }
+          if (line[index] === "\"") {
+            index += 1;
+            break;
+          }
+          index += 1;
+        }
+      } else {
+        const close = line.indexOf("'", index + 1);
+        index = close < 0 ? line.length : close + 1;
+      }
+      continue;
+    }
+    if (char === "[") state.depth += 1;
+    else if (char === "]") state.depth = Math.max(0, state.depth - 1);
+    index += 1;
+  }
+  return topLevelBefore ? line.slice(0, comment) : null;
+}
+
+interface CodexHeaderScan {
+  index: number;
+  state: TomlScanState;
+}
+
+function findCodexHeader(lines: readonly string[], name: string): CodexHeaderScan {
+  const state = createTomlScanState();
+  for (let index = 0; index < lines.length; index++) {
+    const code = advanceTomlLine(state, lines[index] ?? "");
+    if (code === null) continue;
+    const segments = codexTableSegments(code.trim());
+    if (segments !== null
+      && segments.length === 2
+      && segments[0] === "mcp_servers"
+      && segments[1] === name) {
+      return { index, state };
+    }
+  }
+  return { index: -1, state };
 }
 
 function codexHeaderIndex(lines: readonly string[], name: string): number {
-  let depth = 0;
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index] ?? "";
-    if (depth === 0) {
-      const segments = codexTableSegments(line);
-      if (segments !== null
-        && segments.length === 2
-        && segments[0] === "mcp_servers"
-        && segments[1] === name) {
-        return index;
-      }
-    }
-    depth = Math.max(0, depth + codexBracketDelta(line));
-  }
-  return -1;
+  return findCodexHeader(lines, name).index;
 }
 
 //* Sub-tables such as `[mcp_servers.github.env]` belong to the removed entry and go with it.
@@ -303,23 +354,20 @@ function codexRemove(existing: unknown, name: string): string {
   const text = codexText(existing);
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);
-  const start = codexHeaderIndex(lines, name);
+  const header = findCodexHeader(lines, name);
+  const start = header.index;
   if (start < 0) return text;
   const path = ["mcp_servers", name];
   let end = start + 1;
-  let depth = 0;
   while (end < lines.length) {
-    const line = lines[end] ?? "";
-    if (depth === 0) {
-      const segments = codexTableSegments(line);
-      if (segments !== null) {
-        if (!isCodexPrefix(path, segments)) break;
-        //* A following sub-table section belongs to the entry; consume it and keep scanning.
-        end += 1;
-        continue;
-      }
+    const code = advanceTomlLine(header.state, lines[end] ?? "");
+    const segments = code === null ? null : codexTableSegments(code.trim());
+    if (segments !== null) {
+      if (!isCodexPrefix(path, segments)) break;
+      //* A following sub-table section belongs to the entry; consume it and keep scanning.
+      end += 1;
+      continue;
     }
-    depth = Math.max(0, depth + codexBracketDelta(line));
     end += 1;
   }
 
