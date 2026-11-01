@@ -219,7 +219,7 @@ Agents receive the full input schema for every tool via `tools/list`; this is a 
 | Symptom | Meaning | What to do |
 | --- | --- | --- |
 | 403/429 with `rate_limited` | The quota for this credential is exhausted | Call `github_rate_limit` and wait for the reset it reports |
-| DNS or connection failures for raw.githubusercontent.com | The path to GitHub is unreliable on this network | Set `GITHUB_PROXY` or `HTTPS_PROXY` |
+| DNS or connection failures for raw or API hosts | The path to GitHub is unreliable on this network | Set `GITHUB_PROXY` or `HTTPS_PROXY` |
 | `auth_missing` | The endpoint needs a token; `github_search_code` requires one | Set `GITHUB_TOKEN` or `GH_TOKEN` |
 | `not_found` | The repository, ref, path, or release tag does not exist, or is private | Check `owner/name` and the ref |
 | TLS errors | TLS interception (corporate MITM) or a broken proxy path | Point `GITHUB_PROXY` or `HTTPS_PROXY` at a working proxy, or try `GITHUB_PROXY_MODE=direct` |

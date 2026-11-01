@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published minor version. At the time of writing that is `0.2.x`.
+Security fixes are provided for the latest published minor version. `0.2.x` is the upcoming release; `0.1.0` is the currently published version.
 
 ## Threat model
 

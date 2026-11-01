@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const text = readFileSync(".github/workflows/release.yml", "utf8");
+const text = readFileSync(".github/workflows/release.yml", "utf8").replace(/\r\n/g, "\n");
 
 describe("release workflow", () => {
   it("runs on tags and manual dry-runs", () => {
@@ -45,11 +45,20 @@ describe("release workflow", () => {
     expect(text).toContain("manual publish is only allowed from main");
     expect(text).toContain("github.ref != 'refs/heads/main'");
     expect(text).toContain("fetch-depth: 0");
-    expect(text).toContain("git merge-base --is-ancestor");
-    expect(text).toContain("git rev-parse");
+    expect(text).toContain("git merge-base --is-ancestor \"$GITHUB_SHA\" origin/main");
+    expect(text).toContain('test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"');
+    expect(text).toContain('test "v$VERSION" = "$TAG_NAME"');
+    expect(text).toContain("missing changelog version");
+    expect(text).toContain("Tarball:");
+    expect(text).toContain("SHA-256:");
+    expect(text).toContain("sha256sum");
+    expect(text).toContain("Would run: npm publish --provenance --access public");
     expect(text).toContain("--verify-tag");
     expect(text).toContain("gh release create");
     expect(text).toContain("inputs.dry_run == false");
     expect(text).toContain("release-npm");
+    expect(text).toContain("persist-credentials: false");
+    const publishJob = text.indexOf("  publish:");
+    expect(text.indexOf("- run: npm ci", publishJob)).toBeGreaterThan(text.indexOf("Guard release ancestry", publishJob));
   });
 });

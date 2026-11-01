@@ -54,6 +54,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -70,7 +71,6 @@ jobs:
           else
             echo "fallback=false" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm ci
       - name: Check tag and version
         id: version
         shell: bash
@@ -104,6 +104,7 @@ jobs:
           git fetch --tags origin
           TAG="v$VERSION"
           test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"
+      - run: npm ci
       - name: Extract release notes
         if: github.event_name == 'push' || inputs.dry_run == false
         shell: bash
@@ -119,6 +120,18 @@ jobs:
           const end = source.indexOf("\n## [", start + 1);
           fs.writeFileSync("release-notes.md", source.slice(start, end < 0 ? undefined : end));
           '
+      - name: Build and record tarball checksum
+        if: github.event_name == 'push' || inputs.dry_run == false
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm run build
+          npm pack --json > pack.json
+          TARBALL=$(node -p "require('./pack.json')[0].filename")
+          SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
+          printf '\nTarball: %s\nSHA-256: %s\n' "$TARBALL" "$SHA" >> release-notes.md
+          rm -f "$TARBALL" pack.json
       - name: Check whether the version is already published
         id: published
         if: github.event_name == 'push' || inputs.dry_run == false
@@ -131,6 +144,14 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Show publish commands (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "Would run: npm publish --provenance --access public"
+          echo "Would run: gh release create v$VERSION --verify-tag --title \"v$VERSION - capabilities, compare, and client setup\" --notes-file release-notes.md"
       - name: Publish to npm with OIDC
         if: (github.event_name == 'push' || inputs.dry_run == false) && steps.auth.outputs.fallback == 'false' && steps.published.outputs.exists == 'false'
         env:
