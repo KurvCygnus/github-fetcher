@@ -12,6 +12,7 @@ import {
   backupFile,
   describeError,
   parseClientValue,
+  resolveTargetName,
   uniqueIds,
   validateClients,
   validateName,
@@ -58,6 +59,7 @@ export type InitAction =
 export interface InitResult {
   client?: string | undefined;
   path?: string | undefined;
+  name?: string | undefined;
   action: InitAction;
   backup?: string | undefined;
   entry?: unknown;
@@ -166,30 +168,32 @@ async function createFresh(adapter: ClientAdapter, path: string, context: ApplyC
   const entry = adapter.entry(context.name);
   //* Fresh configs arrive as undefined; every adapter's merge treats that as an empty target.
   const merged = adapter.merge(undefined, context.name, entry);
-  if (context.dryRun) return { client: adapter.id, path, action: "would-create", entry };
+  if (context.dryRun) {
+    return { client: adapter.id, path, name: context.name, action: "would-create", entry };
+  }
   await mkdir(dirname(path), { recursive: true });
   await adapter.write(path, merged);
-  return { client: adapter.id, path, action: "created" };
+  return { client: adapter.id, path, name: context.name, action: "created" };
 }
 
 async function mergeTarget(adapter: ClientAdapter, path: string, context: ApplyContext): Promise<InitResult> {
   const raw = await readFile(path, "utf8");
   const existing = adapter.load(path);
-  const name = context.nameExplicit ? context.name : adapter.resolveName(existing, context.name);
+  const name = resolveTargetName(adapter, existing, context.name, context.nameExplicit);
   const entry = adapter.entry(name);
   const merged = adapter.merge(existing, name, entry);
   if (adapter.serialize(merged) === raw) {
-    return { client: adapter.id, path, action: context.dryRun ? "would-skip" : "skipped" };
+    return { client: adapter.id, path, name, action: context.dryRun ? "would-skip" : "skipped" };
   }
   const existed = adapter.hasEntry(existing, name);
   if (context.dryRun) {
-    return { client: adapter.id, path, action: existed ? "would-update" : "would-create", entry };
+    return { client: adapter.id, path, name, action: existed ? "would-update" : "would-create", entry };
   }
   //* The backup is written before the target changes; a failed write must still leave the
   //* original recoverable next to it.
   const backup = await backupFile(path, raw);
   await adapter.write(path, merged);
-  return { client: adapter.id, path, action: existed ? "updated" : "created", backup };
+  return { client: adapter.id, path, name, action: existed ? "updated" : "created", backup };
 }
 
 async function applyAdapter(
@@ -206,6 +210,7 @@ async function applyAdapter(
         return {
           client: adapter.id,
           path: candidates[0] ?? "",
+          name: context.name,
           action: "not-installed",
           hint: `no config found; pass --client ${adapter.id} to create one`,
         };

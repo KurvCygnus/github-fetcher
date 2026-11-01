@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { CliUsageError } from "./argv.js";
 import { ADAPTERS } from "./clients/index.js";
+import type { ClientAdapter } from "./clients/index.js";
 
 export const DEFAULT_NAME = "github";
 
@@ -31,6 +32,17 @@ export function parseClientValue(raw: string): string[] {
 
 export function uniqueIds(ids: readonly string[]): string[] {
   return [...new Set(ids)];
+}
+
+//* An explicit --name is an exact instruction; otherwise reuse the key that already belongs
+//* to this package so a legacy name is updated in place.
+export function resolveTargetName(
+  adapter: ClientAdapter,
+  existing: unknown,
+  preferred: string,
+  explicit: boolean,
+): string {
+  return explicit ? preferred : adapter.resolveName(existing, preferred);
 }
 
 export function describeError(error: unknown): string {

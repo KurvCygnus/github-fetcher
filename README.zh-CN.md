@@ -38,7 +38,7 @@ OpenCode:
   "mcp": {
     "github": {
       "type": "local",
-      "command": ["npx", "-y", "@kurvcygnus/github-fetcher"],
+      "command": ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
       "enabled": true
     }
   }
@@ -52,7 +52,7 @@ Claude Desktop, 加到 `claude_desktop_config.json`:
   "mcpServers": {
     "github": {
       "command": "npx",
-      "args": ["-y", "@kurvcygnus/github-fetcher"],
+      "args": ["-y", "@kurvcygnus/github-fetcher@latest"],
       "env": { "GITHUB_TOKEN": "ghp_your_token" }
     }
   }
@@ -66,7 +66,7 @@ Cursor, 加到 `.cursor/mcp.json`:
   "mcpServers": {
     "github": {
       "command": "npx",
-      "args": ["-y", "@kurvcygnus/github-fetcher"]
+      "args": ["-y", "@kurvcygnus/github-fetcher@latest"]
     }
   }
 }
@@ -80,7 +80,7 @@ VS Code, 加到 `.vscode/mcp.json`:
     "github": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@kurvcygnus/github-fetcher"]
+      "args": ["-y", "@kurvcygnus/github-fetcher@latest"]
     }
   }
 }
@@ -112,9 +112,10 @@ VS Code, 加到 `.vscode/mcp.json`:
     github-fetcher init --client opencode --name github
 
 - `--client id,id` 指定客户端 (逗号分隔); `--all` 覆盖所有适配器; `--dry-run` 只报告 `would-create`, `would-update` 或 `would-skip`, 不改动文件; `--name` 设置条目名 (默认 `github`). 只带 `--dry-run` 而不给 `--client` 或 `--all` 时同样会覆盖所有适配器, 检测不到的客户端报告 `not-installed`, 不会报告 `would-create`.
+- 默认情况下, `init` 会复用 `command` 或 `args` 已指向本包的现有条目, 即使它的键是 `github-fetcher` 这样的旧名称, 也会原地更新该条目而不是新增重复项. `--name` 会关闭解析并强制使用指定的键.
 - 只有在显式选中某个客户端时才会新建缺失的配置文件 (`--client`, 或在菜单里勾选); 未被选中且检测不到的客户端报告 `not-installed`, 不会为它写任何文件. 单独使用 `--all` 覆盖所有已检测到的客户端, 其余报告为 `not-installed`.
 - 改动已有文件前都会在同目录备份为 `<path>.bak.<timestamp>`; 备份写完才会改动目标文件; 同一秒内重跑会改用数字后缀, 不覆盖先前的备份.
-- stdout 输出一个 JSON 数组, 每个客户端一个对象 (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`); 解析到的认证方式 (`token` 或 `anonymous`) 写到 stderr. 取消菜单会输出 `cancelled` 并以 0 退出.
+- stdout 输出一个 JSON 数组, 每个客户端一个对象 (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`), 并包含解析后的条目 `name`; 解析到的认证方式 (`token` 或 `anonymous`) 写到 stderr. 取消菜单会输出 `cancelled` 并以 0 退出.
 
 支持的客户端: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `gemini`, `windsurf`, `codex`.
 
@@ -124,6 +125,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 - 只处理已存在的条目: 没有配置文件的客户端报告 `not-installed`, 配置里没有该条目的客户端报告 `skipped`, 这两种情况都不会重写文件.
 - 删除前会把当前文件备份, 命名与 `init` 相同 (`<path>.bak.<timestamp>`).
+- 删除最后一个条目后, 如果配置文件会变成空文件, 该文件会被删除; 结果中标记 `deleted: true`, 备份保留下来作为恢复副本. 存在顶层键或同级条目时文件会保留.
 - ZCode 有意不支持: 它不是适配器, `init` 不会提供它, `remove` 也不会读写它的配置.
 
 ## 安全模型

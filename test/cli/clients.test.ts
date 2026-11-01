@@ -225,6 +225,14 @@ describe("client adapters", () => {
       mcp: { "github-fetcher": { type: "local", command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"] } },
     }, "github")).toBe("github-fetcher");
     expect(opencode.resolveName({
+      mcp: {
+        "github-fetcher": {
+          type: "local",
+          command: ["node", "D:/cache/node_modules/@kurvcygnus/github-fetcher/dist/index.js"],
+        },
+      },
+    }, "github")).toBe("github-fetcher");
+    expect(opencode.resolveName({
       mcp: { pinned: { type: "local", command: ["npx", "-y", "@kurvcygnus/github-fetcher"] } },
     }, "github")).toBe("pinned");
     expect(opencode.resolveName({ mcp: { other: { command: ["node"] } } }, "github")).toBe("github");
@@ -234,9 +242,27 @@ describe("client adapters", () => {
       mcpServers: { legacy: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"] } },
     }, "github")).toBe("legacy");
     expect(cursor.resolveName({
-      mcpServers: { legacy: { command: "node", args: ["C:\\tools\\dist\\index.js"] } },
+      mcpServers: { legacy: { command: "node", args: ["C:\\tools\\github-fetcher\\dist\\index.js"] } },
     }, "github")).toBe("legacy");
+    expect(cursor.resolveName({
+      mcpServers: { legacy: { command: "node", args: ["C:\\tools\\dist\\index.js"] } },
+    }, "github")).toBe("github");
     expect(getAdapter("codex").resolveName("[mcp_servers.legacy]\n", "github")).toBe("github");
+  });
+
+  it("does not resolve unrelated dist builds or package lookalikes", () => {
+    const opencode = getAdapter("opencode");
+    expect(opencode.resolveName({
+      mcp: {
+        "other-server": {
+          type: "local",
+          command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+        },
+      },
+    }, "github")).toBe("github");
+    expect(opencode.resolveName({
+      mcp: { clone: { type: "local", command: ["npx", "-y", "@kurvcygnus/github-fetcher-clone"] } },
+    }, "github")).toBe("github");
   });
 
   it("detects empty configs without discarding surviving keys", () => {

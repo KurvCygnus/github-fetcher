@@ -50,10 +50,15 @@ function jsonEntries(existing: unknown, container: readonly string[]): Record<st
   return isRecord(level) ? level : undefined;
 }
 
+//* Both patterns are anchored: an unrelated local MCP server commonly ends in
+//* `dist/index.js`, and only a path segment named `github-fetcher` identifies this package.
+const SCOPED_PACKAGE_REFERENCE = /^@kurvcygnus\/github-fetcher(?:@|$)/;
+const LOCAL_DIST_REFERENCE = /github-fetcher[\\/](?:[^\\/]*[\\/])*dist[\\/]index\.js$/i;
+
 function referencesPackage(value: unknown): boolean {
   const parts = Array.isArray(value) ? value : [value];
   return parts.some((part) => typeof part === "string"
-    && (part.includes("@kurvcygnus/github-fetcher") || /dist[\\/]index\.js$/.test(part)));
+    && (SCOPED_PACKAGE_REFERENCE.test(part) || LOCAL_DIST_REFERENCE.test(part)));
 }
 
 function jsonEntryMatches(value: unknown): boolean {

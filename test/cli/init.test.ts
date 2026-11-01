@@ -159,6 +159,7 @@ describe("runInit", () => {
     expect(freshEntries[0]).toMatchObject({
       client: "cursor",
       path: join(home, ".cursor", "mcp.json"),
+      name: "github",
       action: "would-create",
     });
     expect(freshEntries[0].entry).toMatchObject({ command: "npx" });
@@ -177,7 +178,7 @@ describe("runInit", () => {
 
     expect(updateCode).toBe(0);
     const updateEntries = JSON.parse(update.text());
-    expect(updateEntries[0]).toMatchObject({ client: "opencode", action: "would-update", path: configPath });
+    expect(updateEntries[0]).toMatchObject({ client: "opencode", name: "github", action: "would-update", path: configPath });
     expect(updateEntries[0].backup).toBeUndefined();
     expect(await readFile(configPath, "utf8")).toBe(stale);
     expect((await readdir(dirname(configPath))).filter((name) => name.includes(".bak."))).toHaveLength(0);
@@ -318,7 +319,12 @@ describe("runInit", () => {
     expect(written.mcp["github-fetcher"].command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
     expect(Object.hasOwn(written.mcp, "github")).toBe(false);
     const entries = JSON.parse(out.text());
-    expect(entries[0]).toMatchObject({ client: "opencode", action: "updated", path: configPath });
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      name: "github-fetcher",
+      action: "updated",
+      path: configPath,
+    });
     expect(await readFile(entries[0].backup, "utf8")).toContain("dist/index.js");
   }, 300000);
 
@@ -345,7 +351,36 @@ describe("runInit", () => {
     expect(written.mcp["github-fetcher"]).toEqual(legacy);
     expect(written.mcp.custom.command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
     expect(Object.keys(written.mcp).sort()).toEqual(["custom", "github-fetcher"]);
-    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "created" });
+    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", name: "custom", action: "created" });
+  }, 300000);
+
+  it("creates github without claiming an unrelated local MCP entry", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const other = {
+      type: "local",
+      command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+      enabled: true,
+    };
+    await writeFile(configPath, JSON.stringify({ mcp: { "other-server": other } }, null, 2), "utf8");
+    const out = capture();
+
+    const code = await runInit(
+      { clients: ["opencode"], name: "github", dryRun: false },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.mcp["other-server"]).toEqual(other);
+    expect(written.mcp.github.command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "github",
+      action: "created",
+    });
   }, 300000);
 
   it("rejects unknown clients and invalid names with a usage error", async () => {

@@ -91,7 +91,13 @@ describe("runRemove", () => {
     expect(code).toBe(0);
     expect(existsSync(configPath)).toBe(false);
     const entries = JSON.parse(out.text());
-    expect(entries[0]).toMatchObject({ client: "cursor", path: configPath, action: "removed" });
+    expect(entries[0]).toMatchObject({
+      client: "cursor",
+      path: configPath,
+      name: "github",
+      action: "removed",
+      deleted: true,
+    });
     expect(typeof entries[0].backup).toBe("string");
     expect(await readFile(entries[0].backup, "utf8")).toBe(original);
     expect(await backupsIn(dirname(configPath))).toHaveLength(1);
@@ -130,6 +136,7 @@ describe("runRemove", () => {
     expect(Object.hasOwn(writtenGemini.mcpServers, "github")).toBe(false);
     const entries = JSON.parse(out.text());
     expect(entries.every((entry: { action: string }) => entry.action === "removed")).toBe(true);
+    expect(entries.every((entry: { deleted?: boolean }) => entry.deleted === undefined)).toBe(true);
   }, 300000);
 
   it("removes a legacy entry under its resolved name", async () => {
@@ -158,7 +165,11 @@ describe("runRemove", () => {
     const written = JSON.parse(await readFile(configPath, "utf8"));
     expect(Object.hasOwn(written.mcp, "github-fetcher")).toBe(false);
     expect(written.mcp.existing).toBeDefined();
-    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "removed" });
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "github-fetcher",
+      action: "removed",
+    });
   }, 300000);
 
   it("removes exactly an explicit --name without resolving a legacy entry", async () => {
@@ -187,7 +198,11 @@ describe("runRemove", () => {
     const written = JSON.parse(await readFile(configPath, "utf8"));
     expect(Object.hasOwn(written.mcp, "custom")).toBe(false);
     expect(written.mcp["github-fetcher"]).toBeDefined();
-    expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", action: "removed" });
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "custom",
+      action: "removed",
+    });
   }, 300000);
 
   it("reports skipped when the entry is absent without writing or backing up", async () => {
@@ -207,8 +222,45 @@ describe("runRemove", () => {
     expect(code).toBe(0);
     expect(await readFile(configPath, "utf8")).toBe(original);
     const entries = JSON.parse(out.text());
-    expect(entries[0]).toMatchObject({ client: "opencode", path: configPath, action: "skipped" });
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      path: configPath,
+      name: "github",
+      action: "skipped",
+    });
     expect(entries[0].backup).toBeUndefined();
+    expect(await backupsIn(dirname(configPath))).toHaveLength(0);
+  }, 300000);
+
+  it("reports skipped for an unrelated local MCP entry without writing or backing up", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = JSON.stringify({
+      mcp: {
+        "other-server": {
+          type: "local",
+          command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+          enabled: true,
+        },
+      },
+    }, null, 2) + "\n";
+    await writeFile(configPath, original, "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["opencode"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    expect(await readFile(configPath, "utf8")).toBe(original);
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "github",
+      action: "skipped",
+    });
     expect(await backupsIn(dirname(configPath))).toHaveLength(0);
   }, 300000);
 

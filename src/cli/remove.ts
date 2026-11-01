@@ -9,6 +9,7 @@ import {
   backupFile,
   describeError,
   parseClientValue,
+  resolveTargetName,
   uniqueIds,
   validateClients,
   validateName,
@@ -45,8 +46,10 @@ export type RemoveAction = "removed" | "skipped" | "not-installed" | "error" | "
 export interface RemoveResult {
   client?: string | undefined;
   path?: string | undefined;
+  name?: string | undefined;
   action: RemoveAction;
   backup?: string | undefined;
+  deleted?: boolean | undefined;
   message?: string | undefined;
 }
 
@@ -108,7 +111,7 @@ function targetContainsEntry(adapter: ClientAdapter, target: RemoveTarget): bool
   if (path === undefined) return false;
   try {
     const existing = adapter.load(path);
-    const name = target.nameExplicit ? target.name : adapter.resolveName(existing, target.name);
+    const name = resolveTargetName(adapter, existing, target.name, target.nameExplicit);
     return adapter.hasEntry(existing, name);
   } catch {
     //* An unreadable target cannot be offered as removable; the flag path reports the error.
@@ -122,13 +125,18 @@ async function removeFromAdapter(adapter: ClientAdapter, target: RemoveTarget): 
     const candidates = adapter.candidates(target.home, target.cwd);
     path = candidates.find((candidate) => existsSync(candidate)) ?? "";
     if (path === "") {
-      return { client: adapter.id, path: candidates[0] ?? "", action: "not-installed" };
+      return {
+        client: adapter.id,
+        path: candidates[0] ?? "",
+        name: target.name,
+        action: "not-installed",
+      };
     }
     const raw = await readFile(path, "utf8");
     const existing = adapter.load(path);
-    const name = target.nameExplicit ? target.name : adapter.resolveName(existing, target.name);
+    const name = resolveTargetName(adapter, existing, target.name, target.nameExplicit);
     if (!adapter.hasEntry(existing, name)) {
-      return { client: adapter.id, path, action: "skipped" };
+      return { client: adapter.id, path, name, action: "skipped" };
     }
     const removed = adapter.remove(existing, name);
     //* The backup completes before the target changes, so a failed write still leaves the
@@ -136,9 +144,12 @@ async function removeFromAdapter(adapter: ClientAdapter, target: RemoveTarget): 
     const backup = await backupFile(path, raw);
     //* Removing the only entry must not leave an empty container behind; the backup still
     //* preserves the original file.
-    if (adapter.isEmpty(removed)) await unlink(path);
-    else await adapter.write(path, removed);
-    return { client: adapter.id, path, action: "removed", backup };
+    if (adapter.isEmpty(removed)) {
+      await unlink(path);
+      return { client: adapter.id, path, name, action: "removed", backup, deleted: true };
+    }
+    await adapter.write(path, removed);
+    return { client: adapter.id, path, name, action: "removed", backup };
   } catch (error) {
     return { client: adapter.id, path, action: "error", message: describeError(error) };
   }
