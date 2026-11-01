@@ -27,3 +27,12 @@ describe("issue templates", () => {
     expect(config).toContain("https://github.com/KurvCygnus/github-fetcher#readme");
   });
 });
+
+describe("social preview", () => {
+  it("is a 1280x640 PNG", () => {
+    const png = readFileSync("assets/social-preview.png");
+    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.readUInt32BE(16)).toBe(1280);
+    expect(png.readUInt32BE(20)).toBe(640);
+  });
+});
