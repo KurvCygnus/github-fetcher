@@ -1,0 +1,107 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every check but stop before npm publish and GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run smoke
+      - run: npm run verify:launch
+      - run: npm pack --dry-run
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Detect fallback token
+        id: auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "fallback=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fallback=false" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm ci
+      - name: Check tag and version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SOURCE=$(node -p "require('fs').readFileSync('src/core/version.ts','utf8').match(/VERSION = \"([^\"]+)\"/)[1]")
+          test "$VERSION" = "$SOURCE"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            test "v$VERSION" = "${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Guard manual publish ref
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == false && github.ref != 'refs/heads/main'
+        run: |
+          echo "manual publish is only allowed from main" >&2
+          exit 1
+      - name: Extract release notes
+        if: github.event_name == 'push' || inputs.dry_run == false
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+          const fs = require("fs");
+          const version = process.env.VERSION;
+          const source = fs.readFileSync("CHANGELOG.md", "utf8");
+          const start = source.indexOf("## [" + version + "]");
+          if (start < 0) throw new Error("missing changelog version " + version);
+          const end = source.indexOf("\n## [", start + 1);
+          fs.writeFileSync("release-notes.md", source.slice(start, end < 0 ? undefined : end));
+          '
+      - name: Publish to npm with OIDC
+        if: (github.event_name == 'push' || inputs.dry_run == false) && steps.auth.outputs.fallback == 'false'
+        run: npm publish --provenance --access public
+      - name: Publish to npm with fallback token
+        if: (github.event_name == 'push' || inputs.dry_run == false) && steps.auth.outputs.fallback == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+      - name: Create GitHub Release
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${{ steps.version.outputs.version }}" --title "v${{ steps.version.outputs.version }} - capabilities, compare, and client setup" --notes-file release-notes.md
