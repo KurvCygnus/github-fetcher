@@ -23,7 +23,7 @@ npm run verify:launch
 - Keep the server read-only. Do not add POST, PUT, PATCH, DELETE, or GraphQL.
 - Do not add runtime dependencies without owner approval.
 - New tools must be added to `src/tools/index.ts`, `src/tools/capabilities.ts`, `EXPECTED_TOOL_COUNT`, the smoke assertion, and both READMEs.
-- Tests must not hit the real network. Use the existing `undici` MockAgent patterns and fake every I/O boundary.
+- Tests must not hit the real network. Inject a fake `FetchLike` for `HttpClient` or a fake client for tool tests, and use `vi.fn` for I/O boundaries; see `test/core/http.test.ts` and `test/tools/issues.test.ts`.
 - TypeScript is strict; do not use `any`. Prefer `unknown` plus a guard.
 - Comments explain why, not what. Do not refer to planning documents in code comments.
 
