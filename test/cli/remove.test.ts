@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,7 +46,11 @@ describe("runRemove", () => {
       $schema: "https://opencode.ai/config.json",
       mcp: {
         existing: { type: "local", command: ["x"] },
-        github: { type: "local", command: ["npx"], enabled: true },
+        github: {
+          type: "local",
+          command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+          enabled: true,
+        },
       },
     }, null, 2) + "\n";
     await writeFile(configPath, original, "utf8");
@@ -179,7 +183,10 @@ describe("runRemove", () => {
     await mkdir(dirname(configPath), { recursive: true });
     await writeFile(configPath, JSON.stringify({
       mcp: {
-        custom: { type: "local", command: ["x"] },
+        custom: {
+          type: "local",
+          command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+        },
         "github-fetcher": {
           type: "local",
           command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
@@ -264,6 +271,150 @@ describe("runRemove", () => {
     expect(await backupsIn(dirname(configPath))).toHaveLength(0);
   }, 300000);
 
+  it("skips a foreign github entry without writing or backing up", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = JSON.stringify({
+      mcp: {
+        github: {
+          type: "local",
+          command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+        },
+      },
+    }, null, 2) + "\n";
+    await writeFile(configPath, original, "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["opencode"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    expect(await readFile(configPath, "utf8")).toBe(original);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      path: configPath,
+      name: "github",
+      action: "skipped",
+    });
+    expect(entries[0].message).toContain("another server");
+    expect(entries[0].backup).toBeUndefined();
+    expect(await backupsIn(dirname(configPath))).toHaveLength(0);
+  }, 300000);
+
+  it("skips an explicit --name that collides with a foreign entry", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = JSON.stringify({
+      mcp: {
+        github: {
+          type: "local",
+          command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+        },
+      },
+    }, null, 2) + "\n";
+    await writeFile(configPath, original, "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      ["--client", "opencode", "--name", "github"],
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "github",
+      action: "skipped",
+    });
+    expect(await readFile(configPath, "utf8")).toBe(original);
+    expect(await backupsIn(dirname(configPath))).toHaveLength(0);
+  }, 300000);
+
+  it("removes an owned legacy key while leaving a foreign github entry alone", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const foreign = { type: "local", command: ["node", "D:/Code/TS/other-server/dist/index.js"] };
+    await writeFile(configPath, JSON.stringify({
+      mcp: {
+        github: foreign,
+        "github-fetcher": {
+          type: "local",
+          command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+          enabled: true,
+        },
+      },
+    }, null, 2) + "\n", "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["opencode"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.mcp.github).toEqual(foreign);
+    expect(Object.hasOwn(written.mcp, "github-fetcher")).toBe(false);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      name: "github-fetcher",
+      action: "removed",
+    });
+    expect(await readFile(entries[0].backup, "utf8")).toContain("dist/index.js");
+  }, 300000);
+
+  it("removes a legacy codex section under its resolved name", async () => {
+    const home = await tempDir("ghf-remove-home-");
+    const cwd = await tempDir("ghf-remove-cwd-");
+    const configPath = join(home, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = [
+      'model = "gpt"',
+      "",
+      "[mcp_servers.github-fetcher]",
+      'command = "node"',
+      'args = ["D:/Code/TS/github-fetcher/dist/index.js"]',
+      "",
+      "[mcp_servers.github-fetcher.env]",
+      'TOKEN = "a"',
+      "",
+      "[mcp_servers.other]",
+      'command = "y"',
+      "",
+    ].join("\n");
+    await writeFile(configPath, original, "utf8");
+    const out = capture();
+
+    const code = await runRemove(
+      { clients: ["codex"], name: "github" },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const text = await readFile(configPath, "utf8");
+    expect(text).not.toContain("github-fetcher");
+    expect(text).toContain('model = "gpt"');
+    expect(text).toContain("[mcp_servers.other]");
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "codex",
+      name: "github-fetcher",
+      action: "removed",
+      path: configPath,
+    });
+    expect(await readFile(entries[0].backup, "utf8")).toBe(original);
+  }, 300000);
+
   it("excises the codex TOML section, keeping surrounding lines", async () => {
     const home = await tempDir("ghf-remove-home-");
     const cwd = await tempDir("ghf-remove-cwd-");
@@ -334,7 +485,12 @@ describe("runRemove", () => {
       opencodePath,
       JSON.stringify({
         $schema: "https://opencode.ai/config.json",
-        mcp: { github: { type: "local", command: ["x"] } },
+        mcp: {
+          github: {
+            type: "local",
+            command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+          },
+        },
       }, null, 2) + "\n",
       "utf8",
     );
@@ -348,7 +504,7 @@ describe("runRemove", () => {
     expect(code).toBe(0);
     const entries = JSON.parse(out.text());
     const cursor = entries.find((entry: { client: string }) => entry.client === "cursor");
-    expect(cursor).toMatchObject({ client: "cursor", path: cursorPath, action: "error" });
+    expect(cursor).toMatchObject({ client: "cursor", path: cursorPath, name: "github", action: "error" });
     expect(typeof cursor.message).toBe("string");
     const opencode = entries.find((entry: { client: string }) => entry.client === "opencode");
     expect(opencode).toMatchObject({ client: "opencode", path: opencodePath, action: "removed" });
@@ -365,7 +521,12 @@ describe("runRemove", () => {
       opencodePath,
       JSON.stringify({
         $schema: "https://opencode.ai/config.json",
-        mcp: { github: { type: "local", command: ["x"] } },
+        mcp: {
+          github: {
+            type: "local",
+            command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+          },
+        },
       }, null, 2) + "\n",
       "utf8",
     );
@@ -399,7 +560,15 @@ describe("runRemove", () => {
     await mkdir(dirname(opencodePath), { recursive: true });
     await writeFile(
       opencodePath,
-      JSON.stringify({ mcp: { existing: {}, github: { type: "local", command: ["x"] } } }, null, 2) + "\n",
+      JSON.stringify({
+        mcp: {
+          existing: {},
+          github: {
+            type: "local",
+            command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+          },
+        },
+      }, null, 2) + "\n",
       "utf8",
     );
     const cursorPath = join(home, ".cursor", "mcp.json");
@@ -408,7 +577,7 @@ describe("runRemove", () => {
     await writeFile(cursorPath, cursorOriginal, "utf8");
     const codexPath = join(home, ".codex", "config.toml");
     await mkdir(dirname(codexPath), { recursive: true });
-    await writeFile(codexPath, 'model = "gpt"\n\n[mcp_servers.github]\ncommand = "x"\n', "utf8");
+    await writeFile(codexPath, 'model = "gpt"\n\n[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "@kurvcygnus/github-fetcher@latest"]\n', "utf8");
     const seen: { items: readonly TuiItem[]; preselected: readonly string[] } = { items: [], preselected: [] };
     const out = capture();
 
@@ -470,7 +639,14 @@ describe("runRemove", () => {
     const cwd = await tempDir("ghf-remove-cwd-");
     const configPath = join(home, ".config", "opencode", "opencode.json");
     await mkdir(dirname(configPath), { recursive: true });
-    const original = JSON.stringify({ mcp: { github: { type: "local", command: ["x"] } } }, null, 2) + "\n";
+    const original = JSON.stringify({
+      mcp: {
+        github: {
+          type: "local",
+          command: ["npx", "-y", "@kurvcygnus/github-fetcher@latest"],
+        },
+      },
+    }, null, 2) + "\n";
     await writeFile(configPath, original, "utf8");
     const out = capture();
 
@@ -490,6 +666,18 @@ describe("runRemove", () => {
     expect(JSON.parse(out.text())).toEqual([{ action: "cancelled" }]);
     expect(await readFile(configPath, "utf8")).toBe(original);
     expect(await backupsIn(dirname(configPath))).toHaveLength(0);
+  }, 300000);
+
+  const posixIt = process.platform === "win32" ? it.skip : it;
+  posixIt("preserves the source file mode on backups", async () => {
+    const dir = await tempDir("ghf-remove-mode-");
+    const path = join(dir, "config.json");
+    await writeFile(path, "config", "utf8");
+    await chmod(path, 0o600);
+
+    const backup = await backupFile(path, "config", new Date(2026, 9, 31, 12, 0, 0));
+
+    expect((await stat(backup)).mode & 0o777).toBe(0o600);
   }, 300000);
 
   it("a same-second backup collision keeps the older backup under a suffix", async () => {

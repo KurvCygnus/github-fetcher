@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { CliUsageError } from "./argv.js";
 import { ADAPTERS } from "./clients/index.js";
 import type { ClientAdapter } from "./clients/index.js";
@@ -34,15 +34,15 @@ export function uniqueIds(ids: readonly string[]): string[] {
   return [...new Set(ids)];
 }
 
-//* An explicit --name is an exact instruction; otherwise reuse the key that already belongs
-//* to this package so a legacy name is updated in place.
+//* An explicit --name is an exact instruction; otherwise the adapter reuses the key that
+//* already belongs to this package, or reports a foreign-key conflict as null.
 export function resolveTargetName(
   adapter: ClientAdapter,
   existing: unknown,
   preferred: string,
   explicit: boolean,
-): string {
-  return explicit ? preferred : adapter.resolveName(existing, preferred);
+): string | null {
+  return adapter.resolveName(existing, preferred, explicit);
 }
 
 export function describeError(error: unknown): string {
@@ -63,12 +63,24 @@ function isAlreadyExists(error: unknown): boolean {
 
 //* The exclusive-create flag is load-bearing: a same-second rerun must never truncate the
 //* previous backup. A collision walks a numeric suffix until a free name is found.
+//* The source mode is copied when it can be read; a missing source (a unit-test caller) is
+//* not a reason to refuse writing the backup.
 export async function backupFile(path: string, raw: string, now: Date = new Date()): Promise<string> {
+  let mode: number | undefined;
+  try {
+    mode = (await stat(path)).mode & 0o777;
+  } catch {
+    mode = undefined;
+  }
   const base = `${path}.bak.${stamp(now)}`;
   for (let suffix = 0; ; suffix++) {
     const candidate = suffix === 0 ? base : `${base}-${suffix}`;
     try {
-      await writeFile(candidate, raw, { encoding: "utf8", flag: "wx" });
+      await writeFile(candidate, raw, {
+        encoding: "utf8",
+        flag: "wx",
+        ...(mode === undefined ? {} : { mode }),
+      });
       return candidate;
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;

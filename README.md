@@ -112,7 +112,7 @@ After a global install (`npm i -g @kurvcygnus/github-fetcher`), the short alias 
     github-fetcher init --client opencode --name github
 
 - `--client id,id` names clients (comma-separated); `--all` sweeps every adapter; `--dry-run` reports `would-create`, `would-update`, or `would-skip` and leaves files alone; `--name` sets the entry name (default `github`). `--dry-run` with neither `--client` nor `--all` still sweeps every adapter, so undetected clients report `not-installed` instead of `would-create`.
-- By default, `init` reuses an existing entry whose `command` or `args` already point at this package, even under a legacy key such as `github-fetcher`, and updates that entry instead of adding a twin. `--name` disables resolution and forces that exact key.
+- By default, `init` reuses an existing entry whose `command` or `args` already point at this package, even under a legacy key such as `github-fetcher`, and updates that entry instead of adding a twin. `--name` disables resolution and forces that exact key. A key that already belongs to another server is never overwritten: when no owned legacy key exists, the client reports `skipped`, and `--name` selects another key.
 - A missing configuration is created only for a client selected explicitly (`--client`, or a pick in the menu); an undetected client that was not selected reports `not-installed` and nothing is written for it. `--all` alone covers every detected client and reports the rest as `not-installed`.
 - Every change to an existing file is preceded by a backup next to it as `<path>.bak.<timestamp>`; the backup completes before the target changes, and a rerun in the same second gets a numeric suffix instead of overwriting the earlier backup.
 - stdout carries one JSON array with one object per client (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`), including the resolved entry `name`; the resolved auth mode (`token` or `anonymous`) is reported on stderr. Cancelling the menu prints `cancelled` and exits 0.
@@ -123,7 +123,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 
 `github-fetcher remove` deletes the entry again. Without flags it offers only clients whose configuration already contains the entry, all preselected; `--client id,id` and `--all` skip the menu, and `--name` selects which entry to remove. A bare `remove` needs an interactive terminal for that menu and exits 2 when stdin is not a TTY; pass `--client` or `--all` to run unattended.
 
-- Only existing entries are touched: a client with no configuration reports `not-installed`, a client whose configuration lacks the entry reports `skipped`, and neither file is rewritten.
+- Only existing entries are touched: a client with no configuration reports `not-installed`, a client whose configuration lacks the entry reports `skipped`, and neither file is rewritten. A key that belongs to another server is never removed; it reports `skipped` with a message.
 - The current file is backed up before the removal is written, with the same `<path>.bak.<timestamp>` naming as `init`.
 - Removing the last entry deletes a configuration file that would become empty; the result reports `deleted: true`, and the backup remains as the recovery copy. A top-level key or a sibling entry keeps the file.
 - ZCode is deliberately unsupported: it is not an adapter, so `init` never offers it and `remove` never reads or writes its configuration.
@@ -138,7 +138,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 
 ## How it works
 
-Every tool call becomes one GET against the GitHub REST API. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every tool except `github_rate_limit` and `github_api_get` accepts a `fresh` option that bypasses the cache for a single request. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
+Every tool call becomes one GET against the GitHub REST API. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every API-reading tool except `github_rate_limit` and `github_api_get` accepts a `fresh` option that bypasses the cache for a single request; `github_capabilities` takes no input. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 

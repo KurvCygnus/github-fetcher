@@ -112,6 +112,7 @@ function targetContainsEntry(adapter: ClientAdapter, target: RemoveTarget): bool
   try {
     const existing = adapter.load(path);
     const name = resolveTargetName(adapter, existing, target.name, target.nameExplicit);
+    if (name === null) return false;
     return adapter.hasEntry(existing, name);
   } catch {
     //* An unreadable target cannot be offered as removable; the flag path reports the error.
@@ -135,6 +136,15 @@ async function removeFromAdapter(adapter: ClientAdapter, target: RemoveTarget): 
     const raw = await readFile(path, "utf8");
     const existing = adapter.load(path);
     const name = resolveTargetName(adapter, existing, target.name, target.nameExplicit);
+    if (name === null) {
+      return {
+        client: adapter.id,
+        path,
+        name: target.name,
+        action: "skipped",
+        message: `entry "${target.name}" already exists and belongs to another server; not removing it`,
+      };
+    }
     if (!adapter.hasEntry(existing, name)) {
       return { client: adapter.id, path, name, action: "skipped" };
     }
@@ -151,7 +161,7 @@ async function removeFromAdapter(adapter: ClientAdapter, target: RemoveTarget): 
     await adapter.write(path, removed);
     return { client: adapter.id, path, name, action: "removed", backup };
   } catch (error) {
-    return { client: adapter.id, path, action: "error", message: describeError(error) };
+    return { client: adapter.id, path, name: target.name, action: "error", message: describeError(error) };
   }
 }
 

@@ -168,7 +168,14 @@ describe("runInit", () => {
 
     const configPath = join(home, ".config", "opencode", "opencode.json");
     await mkdir(dirname(configPath), { recursive: true });
-    const stale = JSON.stringify({ mcp: { github: { type: "local", command: ["stale"] } } }, null, 2);
+    const stale = JSON.stringify({
+      mcp: {
+        github: {
+          type: "local",
+          command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+        },
+      },
+    }, null, 2);
     await writeFile(configPath, stale, "utf8");
     const update = capture();
     const updateCode = await runInit(
@@ -202,7 +209,7 @@ describe("runInit", () => {
     expect(code).toBe(0);
     const entries = JSON.parse(out.text());
     const cursor = entries.find((entry: { client: string }) => entry.client === "cursor");
-    expect(cursor).toMatchObject({ client: "cursor", action: "error", path: cursorPath });
+    expect(cursor).toMatchObject({ client: "cursor", path: cursorPath, name: "github", action: "error" });
     expect(typeof cursor.message).toBe("string");
     const opencode = entries.find((entry: { client: string }) => entry.client === "opencode");
     expect(opencode).toMatchObject({ client: "opencode", action: "created", path: opencodePath });
@@ -352,6 +359,149 @@ describe("runInit", () => {
     expect(written.mcp.custom.command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
     expect(Object.keys(written.mcp).sort()).toEqual(["custom", "github-fetcher"]);
     expect(JSON.parse(out.text())[0]).toMatchObject({ client: "opencode", name: "custom", action: "created" });
+  }, 300000);
+
+  it("skips a foreign github entry without modifying the file", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const foreign = {
+      type: "local",
+      command: ["node", "D:/Code/TS/other-server/dist/index.js"],
+      enabled: true,
+    };
+    const original = JSON.stringify({ mcp: { github: foreign } }, null, 2);
+    await writeFile(configPath, original, "utf8");
+
+    const out = capture();
+    const code = await runInit(
+      { clients: ["opencode"], name: "github", dryRun: false },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      path: configPath,
+      name: "github",
+      action: "skipped",
+    });
+    expect(entries[0].message).toContain("another server");
+    expect(entries[0].hint).toContain("--name");
+    expect(entries[0].backup).toBeUndefined();
+    expect(await readFile(configPath, "utf8")).toBe(original);
+    expect((await readdir(dirname(configPath))).filter((name) => name.includes(".bak."))).toHaveLength(0);
+  }, 300000);
+
+  it("skips an explicit --name that collides with a foreign entry", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const foreign = { type: "local", command: ["node", "D:/Code/TS/other-server/dist/index.js"] };
+    const original = JSON.stringify({ mcp: { github: foreign } }, null, 2);
+    await writeFile(configPath, original, "utf8");
+
+    const out = capture();
+    const code = await runInit(
+      ["--client", "opencode", "--name", "github"],
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.text())[0]).toMatchObject({
+      client: "opencode",
+      name: "github",
+      action: "skipped",
+    });
+    expect(await readFile(configPath, "utf8")).toBe(original);
+    expect((await readdir(dirname(configPath))).filter((name) => name.includes(".bak."))).toHaveLength(0);
+  }, 300000);
+
+  it("reuses an owned legacy key when the preferred key is foreign", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const foreign = { type: "local", command: ["node", "D:/Code/TS/other-server/dist/index.js"] };
+    const legacy = {
+      type: "local",
+      command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"],
+      enabled: true,
+    };
+    await writeFile(configPath, JSON.stringify({ mcp: { github: foreign, "github-fetcher": legacy } }, null, 2), "utf8");
+
+    const out = capture();
+    const code = await runInit(
+      { clients: ["opencode"], name: "github", dryRun: false },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.mcp.github).toEqual(foreign);
+    expect(written.mcp["github-fetcher"].command).toEqual(["npx", "-y", "@kurvcygnus/github-fetcher@latest"]);
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "opencode",
+      name: "github-fetcher",
+      action: "updated",
+      path: configPath,
+    });
+    expect(await readFile(entries[0].backup, "utf8")).toContain("dist/index.js");
+  }, 300000);
+
+  it("refreshes a legacy codex section in place and leaves a foreign github section alone", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+    const original = [
+      'model = "gpt"',
+      "",
+      "[mcp_servers.github]",
+      'command = "foreign"',
+      "",
+      "[mcp_servers.github-fetcher]",
+      'command = "node"',
+      'args = ["D:/Code/TS/github-fetcher/dist/index.js"]',
+      "",
+      "[mcp_servers.github-fetcher.env]",
+      'TOKEN = "a"',
+      "",
+      "[mcp_servers.other]",
+      'command = "y"',
+      "",
+    ].join("\n");
+    await writeFile(configPath, original, "utf8");
+
+    const out = capture();
+    const code = await runInit(
+      { clients: ["codex"], name: "github", dryRun: false },
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(0);
+    const text = await readFile(configPath, "utf8");
+    expect(text).toContain("[mcp_servers.github]\ncommand = \"foreign\"");
+    expect(text).not.toContain('D:/Code/TS/github-fetcher/dist/index.js');
+    expect(text).toContain("[mcp_servers.github-fetcher]");
+    expect(text).toContain('command = "npx"');
+    expect(text).toContain('args = ["-y", "@kurvcygnus/github-fetcher@latest"]');
+    expect(text).toContain("[mcp_servers.github-fetcher.env]");
+    expect(text).toContain('TOKEN = "a"');
+    expect(text).toContain("[mcp_servers.other]");
+    expect(text).toContain('model = "gpt"');
+    const entries = JSON.parse(out.text());
+    expect(entries[0]).toMatchObject({
+      client: "codex",
+      name: "github-fetcher",
+      action: "updated",
+      path: configPath,
+    });
+    expect(await readFile(entries[0].backup, "utf8")).toBe(original);
   }, 300000);
 
   it("creates github without claiming an unrelated local MCP entry", async () => {

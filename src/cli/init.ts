@@ -180,6 +180,16 @@ async function mergeTarget(adapter: ClientAdapter, path: string, context: ApplyC
   const raw = await readFile(path, "utf8");
   const existing = adapter.load(path);
   const name = resolveTargetName(adapter, existing, context.name, context.nameExplicit);
+  if (name === null) {
+    return {
+      client: adapter.id,
+      path,
+      name: context.name,
+      action: context.dryRun ? "would-skip" : "skipped",
+      message: `entry "${context.name}" already exists and belongs to another server; left unchanged`,
+      hint: `pass --name <key> to install under a different key`,
+    };
+  }
   const entry = adapter.entry(name);
   const merged = adapter.merge(existing, name, entry);
   if (adapter.serialize(merged) === raw) {
@@ -221,7 +231,7 @@ async function applyAdapter(
     }
     return await mergeTarget(adapter, path, context);
   } catch (error) {
-    return { client: adapter.id, path, action: "error", message: describeError(error) };
+    return { client: adapter.id, path, name: context.name, action: "error", message: describeError(error) };
   }
 }
 

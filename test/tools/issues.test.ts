@@ -70,6 +70,53 @@ describe("github_issue", () => {
     });
   });
 
+  it("fetches preceding comment pages when the last page cannot satisfy the limit", async () => {
+    const all = Array.from({ length: 101 }, (_, index) => ({
+      ...comment,
+      body: `comment ${index + 1}`,
+      created_at: `2024-01-03T00:00:${String(index % 60).padStart(2, "0")}Z`,
+    }));
+    const pageUrl = (page: number): string =>
+      `https://api.test/repos/o/r/issues/7/comments?per_page=100&page=${page}`;
+    const response = (data: typeof all, link: string) => ({
+      data,
+      headers: new Headers({ link }),
+      status: 200,
+      contentType: "application/json",
+    });
+    const apiClient = {
+      api: vi.fn(async (url: string) => {
+        if (url.includes("/issues/7/comments")) {
+          if (url.includes("page=2")) {
+            return response(all.slice(100), `<${pageUrl(1)}>; rel="prev"`);
+          }
+          return response(all.slice(0, 100), `<${pageUrl(2)}>; rel="last"`);
+        }
+        return {
+          data: { ...issue, comments: 101 },
+          headers: new Headers(),
+          status: 200,
+          contentType: "application/json",
+        };
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+
+    const output = await issueTool.handler(
+      { repo: "o/r", number: 7, include_comments: true },
+      { client: apiClient, config: makeConfig(), authFingerprint: "abc" },
+    );
+
+    const comments = (output as { comments: Array<{ body: string }> }).comments;
+    expect(comments).toHaveLength(20);
+    expect(comments[0]?.body).toBe("comment 82");
+    expect(comments[19]?.body).toBe("comment 101");
+    expect(output.comments_truncated).toBe(true);
+    expect(apiClient.api).toHaveBeenCalledWith(pageUrl(2), { fresh: undefined, cacheTtlMs: 120_000 });
+    expect(apiClient.api).toHaveBeenCalledWith(pageUrl(1), { fresh: undefined, cacheTtlMs: 120_000 });
+  });
+
   it("honors comment_limit and max_comment_chars", async () => {
     const many = client([
       { ...comment, body: "first comment body" },

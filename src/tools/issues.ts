@@ -90,16 +90,25 @@ export const issueTool = defineTool({
         `/repos/${owner}/${name}/issues/${input.number}/comments?per_page=100`,
         { fresh: input.fresh, cacheTtlMs: 120_000 },
       );
+      const limit = input.comment_limit ?? 20;
       let comments = first.data;
       const lastPage = linkFor(first.headers, "last");
-      if (lastPage) {
-        const last = await ctx.client.api<CommentResponse[]>(lastPage, {
-          fresh: input.fresh,
-          cacheTtlMs: 120_000,
-        });
-        comments = last.data;
+      if (lastPage !== null) {
+        //* The newest page alone may hold fewer than the requested limit. Walk backwards until
+        //* enough comments are collected; each step prepends an older page in chronological order.
+        const collected: CommentResponse[] = [];
+        let page: string | null = lastPage;
+        while (page !== null && collected.length < limit) {
+          const response = await ctx.client.api<CommentResponse[]>(page, {
+            fresh: input.fresh,
+            cacheTtlMs: 120_000,
+          });
+          collected.unshift(...response.data);
+          page = linkFor(response.headers, "prev");
+        }
+        comments = collected;
       }
-      const latest = comments.slice(-(input.comment_limit ?? 20));
+      const latest = comments.slice(-limit);
       result.comments = latest.map((comment) => ({
         author: comment.user?.login ?? null,
         body: truncateText(

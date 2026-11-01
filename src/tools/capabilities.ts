@@ -14,7 +14,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_repo: { group: "Repository", summary: "Single repository metadata: description, stars, forks, license, default branch." },
   github_branches: { group: "Repository", summary: "Branch list with head sha and protection state." },
   github_tree: { group: "Files", summary: "File and directory listing at a ref, recursive optional." },
-  github_file: { group: "Files", summary: "One file's text at a ref; binary-safe." },
+  github_file: { group: "Files", summary: "One file's text at a ref; reports binary files without bytes." },
   github_commits: { group: "History", summary: "Commit list on a ref with path/author/date filters." },
   github_issue: { group: "Collaboration", summary: "One issue or pull request with comments on demand." },
   github_issues: { group: "Collaboration", summary: "Issue list with state and label filters; defaults to issues only." },

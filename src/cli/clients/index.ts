@@ -9,7 +9,7 @@ export interface ClientAdapter {
   label: string;
   candidates(home: string, cwd: string): string[];
   load(path: string): unknown;
-  resolveName(existing: unknown, preferred: string): string;
+  resolveName(existing: unknown, preferred: string, explicit: boolean): string | null;
   isEmpty(existing: unknown): boolean;
   entry(name: string): unknown;
   hasEntry(existing: unknown, name: string): boolean;
@@ -53,7 +53,7 @@ function jsonEntries(existing: unknown, container: readonly string[]): Record<st
 //* Both patterns are anchored: an unrelated local MCP server commonly ends in
 //* `dist/index.js`, and only a path segment named `github-fetcher` identifies this package.
 const SCOPED_PACKAGE_REFERENCE = /^@kurvcygnus\/github-fetcher(?:@|$)/;
-const LOCAL_DIST_REFERENCE = /github-fetcher[\\/](?:[^\\/]*[\\/])*dist[\\/]index\.js$/i;
+const LOCAL_DIST_REFERENCE = /(?:^|[\\/])github-fetcher[\\/](?:[^\\/]*[\\/])*dist[\\/]index\.js$/i;
 
 function referencesPackage(value: unknown): boolean {
   const parts = Array.isArray(value) ? value : [value];
@@ -68,14 +68,23 @@ function jsonEntryMatches(value: unknown): boolean {
 
 //* An existing installation may use a different key (for example the legacy `github-fetcher`
 //* from a local dist build). Reusing that key updates the real entry instead of adding a twin.
-function jsonResolveName(existing: unknown, container: readonly string[], preferred: string): string {
+//* A key already claimed by another server is never a target: the default falls back to an
+//* owned legacy key, while an explicit name reports the conflict to the caller.
+function jsonResolveName(
+  existing: unknown,
+  container: readonly string[],
+  preferred: string,
+  explicit: boolean,
+): string | null {
   const entries = jsonEntries(existing, container);
   if (entries === undefined) return preferred;
-  if (Object.hasOwn(entries, preferred)) return preferred;
+  const preferredPresent = Object.hasOwn(entries, preferred);
+  if (preferredPresent && jsonEntryMatches(entries[preferred])) return preferred;
+  if (explicit) return preferredPresent ? null : preferred;
   for (const [key, value] of Object.entries(entries)) {
     if (jsonEntryMatches(value)) return key;
   }
-  return preferred;
+  return preferredPresent ? null : preferred;
 }
 
 //* A config is disposable only when the container path is the whole document and its leaf is
@@ -118,8 +127,8 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
     load(path) {
       return JSON.parse(readFileSync(path, "utf8")) as unknown;
     },
-    resolveName(existing, preferred) {
-      return jsonResolveName(existing, spec.container, preferred);
+    resolveName(existing, preferred, explicit) {
+      return jsonResolveName(existing, spec.container, preferred, explicit);
     },
     isEmpty(existing) {
       return jsonIsEmpty(existing, spec.container);
@@ -364,6 +373,123 @@ function advanceTomlLine(state: TomlScanState, line: string): string | null {
   return topLevelBefore ? line.slice(0, comment) : null;
 }
 
+interface CodexSection {
+  name: string;
+  header: number;
+  bodyStart: number;
+  bodyEnd: number;
+}
+
+//* A section owns everything after its header until the next table header, except that
+//* `[mcp_servers.<name>.*]` sub-tables stay attached to it. Headers inside comments or strings
+//* are ignored by the same stateful scanner used for removal.
+function codexSections(lines: readonly string[]): CodexSection[] {
+  const sections: CodexSection[] = [];
+  const state = createTomlScanState();
+  let current: CodexSection | null = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const code = advanceTomlLine(state, lines[index] ?? "");
+    if (code === null) continue;
+    const segments = codexTableSegments(code.trim());
+    if (segments === null) continue;
+    if (current !== null) {
+      if (current.bodyEnd === lines.length) current.bodyEnd = index;
+      if (!isCodexPrefix(["mcp_servers", current.name], segments)) current = null;
+    }
+    if (segments.length === 2 && segments[0] === "mcp_servers") {
+      const name = segments[1];
+      if (name === undefined) continue;
+      current = { name, header: index, bodyStart: index + 1, bodyEnd: lines.length };
+      sections.push(current);
+    }
+  }
+  return sections;
+}
+
+function tomlStringValues(text: string): string[] {
+  const values: string[] = [];
+  const quoted = /"(?:\\.|[^"\\])*"|'[^']*'/g;
+  for (const match of text.matchAll(quoted)) {
+    const value = match[0];
+    if (value !== undefined) values.push(value.slice(1, -1));
+  }
+  return values;
+}
+
+//* A continuation line starts inside an array, so the running scanner returns null for it.
+//* A fresh scan still strips a trailing comment without treating the line as a new table.
+function tomlContinuationCode(line: string): string {
+  return advanceTomlLine(createTomlScanState(), line) ?? line;
+}
+
+//* Ownership lives in the section body, not the header: a foreign `[mcp_servers.github]`
+//* may exist while a legacy `[mcp_servers.github-fetcher]` is the one this package owns.
+function codexSectionReferences(lines: readonly string[], section: CodexSection): boolean {
+  const state = createTomlScanState();
+  let assignment: string[] | null = null;
+  for (let index = section.bodyStart; index < section.bodyEnd; index += 1) {
+    const line = lines[index] ?? "";
+    const inMultiline = state.multiline !== null;
+    const code = advanceTomlLine(state, line);
+    if (assignment !== null) {
+      assignment.push(code ?? (inMultiline ? line : tomlContinuationCode(line)));
+      if (state.depth === 0 && state.multiline === null) {
+        if (tomlStringValues(assignment.join("\n")).some(referencesPackage)) return true;
+        assignment = null;
+      }
+      continue;
+    }
+    if (code === null || !/^\s*(?:command|args)\s*=/.test(code)) continue;
+    assignment = [code];
+    if (state.depth === 0 && state.multiline === null) {
+      if (tomlStringValues(code).some(referencesPackage)) return true;
+      assignment = null;
+    }
+  }
+  return false;
+}
+
+function codexResolveName(existing: unknown, preferred: string, explicit: boolean): string | null {
+  const lines = codexText(existing).split(/\r?\n/);
+  const sections = codexSections(lines);
+  const owned = sections.filter((section) => codexSectionReferences(lines, section));
+  if (owned.some((section) => section.name === preferred)) return preferred;
+  const preferredPresent = sections.some((section) => section.name === preferred);
+  if (explicit) return preferredPresent ? null : preferred;
+  const legacy = owned.find((section) => section.name !== preferred);
+  if (legacy !== undefined) return legacy.name;
+  return preferredPresent ? null : preferred;
+}
+
+//* Replacing only the top-level body keeps sibling tables and the section's own sub-tables
+//* (for example an `env` table) byte-identical. Trailing blank/comment lines before the next
+//* header stay with that header instead of being removed with the old body.
+function codexRefresh(existing: unknown, name: string): string | null {
+  const text = codexText(existing);
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  const section = codexSections(lines).find((candidate) => candidate.name === name);
+  if (section === undefined) return null;
+  const header = lines[section.header];
+  if (header === undefined) return text;
+  let bodyEnd = section.bodyEnd;
+  while (bodyEnd > section.bodyStart) {
+    const candidate = (lines[bodyEnd - 1] ?? "").trim();
+    if (candidate !== "" && !candidate.startsWith("#")) break;
+    bodyEnd -= 1;
+  }
+  const body = codexEntry(name).split("\n").slice(1);
+  const tail = lines.slice(bodyEnd);
+  const separator = tail.length > 0 && (tail[0] ?? "").trim() !== "";
+  const merged = [
+    ...lines.slice(0, section.header + 1),
+    ...body,
+    ...(separator ? [""] : []),
+    ...tail,
+  ];
+  return merged.join(eol);
+}
+
 interface CodexHeaderScan {
   index: number;
   state: TomlScanState;
@@ -451,8 +577,8 @@ const codex: ClientAdapter = {
   load(path) {
     return readFileSync(path, "utf8");
   },
-  resolveName(_existing, preferred) {
-    return preferred;
+  resolveName(existing, preferred, explicit) {
+    return codexResolveName(existing, preferred, explicit);
   },
   isEmpty(existing) {
     return String(existing).trim() === "";
@@ -461,7 +587,8 @@ const codex: ClientAdapter = {
   hasEntry: codexHasEntry,
   merge(existing, name) {
     const text = codexText(existing);
-    if (codexHasEntry(text, name)) return text;
+    const refreshed = codexRefresh(text, name);
+    if (refreshed !== null) return refreshed;
     const body = text.replace(/\s*$/, "");
     //* A fresh config (no candidate file) arrives as undefined; emit just the new table.
     return body === "" ? `${codexEntry(name)}\n` : `${body}\n\n${codexEntry(name)}\n`;

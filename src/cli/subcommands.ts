@@ -75,7 +75,8 @@ export function usageFor(subcommand: string | undefined): string {
     "Subcommands:",
     ...lines,
     "",
-    "Flags are kebab-case schema keys; arrays are comma-joined; booleans are bare.",
+    "Flags are kebab-case schema keys; flag arrays are comma-separated; booleans are bare.",
+    "Positional list arguments take one value per argument.",
     "Output is compact JSON on stdout; errors go to stderr as JSON with family exit codes.",
   ].join("\n") + "\n";
 }

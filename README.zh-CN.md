@@ -112,7 +112,7 @@ VS Code, 加到 `.vscode/mcp.json`:
     github-fetcher init --client opencode --name github
 
 - `--client id,id` 指定客户端 (逗号分隔); `--all` 覆盖所有适配器; `--dry-run` 只报告 `would-create`, `would-update` 或 `would-skip`, 不改动文件; `--name` 设置条目名 (默认 `github`). 只带 `--dry-run` 而不给 `--client` 或 `--all` 时同样会覆盖所有适配器, 检测不到的客户端报告 `not-installed`, 不会报告 `would-create`.
-- 默认情况下, `init` 会复用 `command` 或 `args` 已指向本包的现有条目, 即使它的键是 `github-fetcher` 这样的旧名称, 也会原地更新该条目而不是新增重复项. `--name` 会关闭解析并强制使用指定的键.
+- 默认情况下, `init` 会复用 `command` 或 `args` 已指向本包的现有条目, 即使它的键是 `github-fetcher` 这样的旧名称, 也会原地更新该条目而不是新增重复项. `--name` 会关闭解析并强制使用指定的键. 已经属于其他服务器的键绝不会被覆盖: 如果没有本包拥有的旧键可复用, 客户端会报告 `skipped`, 可用 `--name` 选择其他键.
 - 只有在显式选中某个客户端时才会新建缺失的配置文件 (`--client`, 或在菜单里勾选); 未被选中且检测不到的客户端报告 `not-installed`, 不会为它写任何文件. 单独使用 `--all` 覆盖所有已检测到的客户端, 其余报告为 `not-installed`.
 - 改动已有文件前都会在同目录备份为 `<path>.bak.<timestamp>`; 备份写完才会改动目标文件; 同一秒内重跑会改用数字后缀, 不覆盖先前的备份.
 - stdout 输出一个 JSON 数组, 每个客户端一个对象 (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`), 并包含解析后的条目 `name`; 解析到的认证方式 (`token` 或 `anonymous`) 写到 stderr. 取消菜单会输出 `cancelled` 并以 0 退出.
@@ -123,7 +123,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 `github-fetcher remove` 删除这个条目. 不带参数时只列出配置里确实含有该条目的客户端, 并全部预选; `--client id,id` 和 `--all` 跳过菜单, `--name` 指定要删除哪个条目. 不带参数时 `remove` 需要交互式终端来显示菜单, stdin 不是 TTY 时会以 2 退出; 无人值守时用 `--client` 或 `--all`.
 
-- 只处理已存在的条目: 没有配置文件的客户端报告 `not-installed`, 配置里没有该条目的客户端报告 `skipped`, 这两种情况都不会重写文件.
+- 只处理已存在的条目: 没有配置文件的客户端报告 `not-installed`, 配置里没有该条目的客户端报告 `skipped`, 这两种情况都不会重写文件. 属于其他服务器的键绝不会被删除; 这种情况报告 `skipped` 并附带说明.
 - 删除前会把当前文件备份, 命名与 `init` 相同 (`<path>.bak.<timestamp>`).
 - 删除最后一个条目后, 如果配置文件会变成空文件, 该文件会被删除; 结果中标记 `deleted: true`, 备份保留下来作为恢复副本. 存在顶层键或同级条目时文件会保留.
 - ZCode 有意不支持: 它不是适配器, `init` 不会提供它, `remove` 也不会读写它的配置.
@@ -138,7 +138,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 ## 工作原理
 
-每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 和 `github_api_get` 外, 每个工具都接受 `fresh` 选项, 为单次请求绕过缓存. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
+每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 和 `github_api_get` 外, 每个读取 API 的工具都接受 `fresh` 选项, 为单次请求绕过缓存; `github_capabilities` 不接受输入. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 

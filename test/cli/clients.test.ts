@@ -116,7 +116,11 @@ describe("client adapters", () => {
     ];
     for (const text of texts) {
       expect(adapter.hasEntry(text, "github")).toBe(true);
-      expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+      const merged = String(adapter.merge(text, "github", adapter.entry("github")));
+      expect(merged.split("\n")[0]).toBe(text.split("\n")[0]);
+      expect(merged).toContain('command = "npx"');
+      expect(merged).not.toContain('command = "x"');
+      expect(adapter.merge(merged, "github", adapter.entry("github"))).toBe(merged);
     }
     expect(adapter.hasEntry('[mcp_servers."github_extra"]\n', "github")).toBe(false);
   });
@@ -138,8 +142,73 @@ describe("client adapters", () => {
     const adapter = getAdapter("codex");
     const text = "model = \"gpt\"\n\n[mcp_servers.'github']\ncommand = \"x\"\n\n[other]\nkey = 1\n";
     expect(adapter.hasEntry(text, "github")).toBe(true);
-    expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+    const merged = adapter.merge(text, "github", adapter.entry("github"));
+    expect(merged).toContain("[mcp_servers.'github']");
+    expect(merged).toContain('command = "npx"');
     expect(adapter.remove(text, "github")).toBe('model = "gpt"\n\n[other]\nkey = 1\n');
+  });
+
+  it("codex refreshes a section body in place and preserves sub-tables and siblings", () => {
+    const adapter = getAdapter("codex");
+    const text = [
+      'model = "gpt"',
+      "",
+      "[mcp_servers.github]",
+      'command = "old"',
+      'args = ["old"]',
+      "",
+      "[mcp_servers.github.env]",
+      'TOKEN = "a"',
+      "",
+      "[mcp_servers.github.env.deep]",
+      "LEVEL = 2",
+      "",
+      "[mcp_servers.other]",
+      'command = "y"',
+      "",
+    ].join("\n");
+    const merged = adapter.merge(text, "github", adapter.entry("github"));
+    expect(merged).toContain('command = "npx"');
+    expect(merged).not.toContain('"old"');
+    expect(merged).toContain('model = "gpt"');
+    expect(merged).toContain("[mcp_servers.github.env]");
+    expect(merged).toContain('TOKEN = "a"');
+    expect(merged).toContain("[mcp_servers.github.env.deep]");
+    expect(merged).toContain("LEVEL = 2");
+    expect(merged).toContain("[mcp_servers.other]");
+    expect(merged).toContain('command = "y"');
+    expect(merged).toContain('\n\n[mcp_servers.github.env]');
+    expect(adapter.merge(merged, "github", adapter.entry("github"))).toBe(merged);
+  });
+
+  it("codex resolves legacy sections by their body and refuses foreign preferred keys", () => {
+    const adapter = getAdapter("codex");
+    const foreign = '[mcp_servers.github]\ncommand = "x"\nargs = []\n';
+    expect(adapter.resolveName(foreign, "github", false)).toBeNull();
+    expect(adapter.resolveName(foreign, "github", true)).toBeNull();
+
+    const owned = '[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "@kurvcygnus/github-fetcher@latest"]\n';
+    expect(adapter.resolveName(owned, "github", false)).toBe("github");
+    expect(adapter.resolveName(owned, "github", true)).toBe("github");
+
+    const legacy = `${foreign}\n[mcp_servers.github-fetcher]\ncommand = "node"\nargs = ["D:/Code/TS/github-fetcher/dist/index.js"]\n`;
+    expect(adapter.resolveName(legacy, "github", false)).toBe("github-fetcher");
+    expect(adapter.resolveName(legacy, "github", true)).toBeNull();
+  });
+
+  it("codex ignores package-like comments inside an argument array", () => {
+    const adapter = getAdapter("codex");
+    const foreign = [
+      "[mcp_servers.github]",
+      'command = "node"',
+      "args = [",
+      '  # "@kurvcygnus/github-fetcher@latest"',
+      '  "other-server"',
+      "]",
+      "",
+    ].join("\n");
+    expect(adapter.resolveName(foreign, "github", false)).toBeNull();
+    expect(adapter.resolveName(foreign, "github", true)).toBeNull();
   });
 
   it("codex keeps multiline array elements in the body while finding the next section", () => {
@@ -197,7 +266,9 @@ describe("client adapters", () => {
     const adapter = getAdapter("codex");
     const text = '# see [docs\n[mcp_servers.github]\ncommand = "x"\n';
     expect(adapter.hasEntry(text, "github")).toBe(true);
-    expect(adapter.merge(text, "github", adapter.entry("github"))).toBe(text);
+    const merged = adapter.merge(text, "github", adapter.entry("github"));
+    expect(merged).toContain("# see [docs");
+    expect(merged).toContain('command = "npx"');
   });
 
   it("codex keeps the next section when a comment has an unmatched bracket", () => {
@@ -220,10 +291,9 @@ describe("client adapters", () => {
 
   it("resolves legacy entry names from package and local-dist commands", () => {
     const opencode = getAdapter("opencode");
-    expect(opencode.resolveName({ mcp: { github: { command: ["stale"] } } }, "github")).toBe("github");
     expect(opencode.resolveName({
       mcp: { "github-fetcher": { type: "local", command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"] } },
-    }, "github")).toBe("github-fetcher");
+    }, "github", false)).toBe("github-fetcher");
     expect(opencode.resolveName({
       mcp: {
         "github-fetcher": {
@@ -231,23 +301,45 @@ describe("client adapters", () => {
           command: ["node", "D:/cache/node_modules/@kurvcygnus/github-fetcher/dist/index.js"],
         },
       },
-    }, "github")).toBe("github-fetcher");
+    }, "github", false)).toBe("github-fetcher");
     expect(opencode.resolveName({
       mcp: { pinned: { type: "local", command: ["npx", "-y", "@kurvcygnus/github-fetcher"] } },
-    }, "github")).toBe("pinned");
-    expect(opencode.resolveName({ mcp: { other: { command: ["node"] } } }, "github")).toBe("github");
+    }, "github", false)).toBe("pinned");
+    expect(opencode.resolveName({ mcp: { other: { command: ["node"] } } }, "github", false)).toBe("github");
+    expect(opencode.resolveName({ mcp: { github: { command: ["node", "/x/github-fetcher/dist/index.js"] } } }, "github", false))
+      .toBe("github");
+    expect(opencode.resolveName({ mcp: { github: { command: ["node", "/x/github-fetcher/dist/index.js"] } } }, "github", true))
+      .toBe("github");
 
     const cursor = getAdapter("cursor");
     expect(cursor.resolveName({
       mcpServers: { legacy: { command: "npx", args: ["-y", "@kurvcygnus/github-fetcher@latest"] } },
-    }, "github")).toBe("legacy");
+    }, "github", false)).toBe("legacy");
     expect(cursor.resolveName({
       mcpServers: { legacy: { command: "node", args: ["C:\\tools\\github-fetcher\\dist\\index.js"] } },
-    }, "github")).toBe("legacy");
+    }, "github", false)).toBe("legacy");
     expect(cursor.resolveName({
       mcpServers: { legacy: { command: "node", args: ["C:\\tools\\dist\\index.js"] } },
-    }, "github")).toBe("github");
-    expect(getAdapter("codex").resolveName("[mcp_servers.legacy]\n", "github")).toBe("github");
+    }, "github", false)).toBe("github");
+    expect(getAdapter("codex").resolveName("[mcp_servers.legacy]\n", "github", false)).toBe("github");
+    expect(getAdapter("codex").resolveName("[mcp_servers.legacy]\n", "github", true)).toBe("github");
+  });
+
+  it("refuses to overwrite a foreign preferred key and reuses an owned legacy key", () => {
+    const opencode = getAdapter("opencode");
+    const foreignOnly = { mcp: { github: { type: "local", command: ["stale"] } } };
+    expect(opencode.resolveName(foreignOnly, "github", false)).toBeNull();
+    expect(opencode.resolveName(foreignOnly, "github", true)).toBeNull();
+
+    const foreignAndLegacy = {
+      mcp: {
+        github: { type: "local", command: ["stale"] },
+        "github-fetcher": { type: "local", command: ["node", "D:/Code/TS/github-fetcher/dist/index.js"] },
+      },
+    };
+    expect(opencode.resolveName(foreignAndLegacy, "github", false)).toBe("github-fetcher");
+    expect(opencode.resolveName(foreignAndLegacy, "github", true)).toBeNull();
+    expect(opencode.resolveName({ mcp: { other: { command: ["node"] } } }, "custom", true)).toBe("custom");
   });
 
   it("does not resolve unrelated dist builds or package lookalikes", () => {
@@ -259,10 +351,13 @@ describe("client adapters", () => {
           command: ["node", "D:/Code/TS/other-server/dist/index.js"],
         },
       },
-    }, "github")).toBe("github");
+    }, "github", false)).toBe("github");
     expect(opencode.resolveName({
       mcp: { clone: { type: "local", command: ["npx", "-y", "@kurvcygnus/github-fetcher-clone"] } },
-    }, "github")).toBe("github");
+    }, "github", false)).toBe("github");
+    expect(opencode.resolveName({
+      mcp: { legacy: { type: "local", command: ["node", "D:/Code/TS/my-github-fetcher/dist/index.js"] } },
+    }, "github", false)).toBe("github");
   });
 
   it("detects empty configs without discarding surviving keys", () => {
