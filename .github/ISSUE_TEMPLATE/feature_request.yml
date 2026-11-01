@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a read-only capability or documentation improvement
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can an agent not read today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should the server expose or change?
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This request stays read-only and uses only api.github.com or raw.githubusercontent.com
+          required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/KurvCygnus/github-fetcher#readme
+    about: Installation, configuration, and troubleshooting

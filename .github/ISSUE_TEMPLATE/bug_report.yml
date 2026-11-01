@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible problem with GitHub Fetcher
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste a token. Redact credentials, private repository names, and local paths before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `npx -y @kurvcygnus/github-fetcher@latest --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client
+      description: OpenCode, Claude Desktop, Cursor, VS Code, Codex, CLI, or another client
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or tool call
+      description: The exact command or tool name and arguments
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redact tokens, private repository names, and local paths
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Rate-limit output, proxy mode, and any redacted error JSON
+      render: text
+    validations:
+      required: false
