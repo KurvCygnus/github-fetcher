@@ -60,5 +60,6 @@ describe("release workflow", () => {
     expect(text).toContain("persist-credentials: false");
     const publishJob = text.indexOf("  publish:");
     expect(text.indexOf("- run: npm ci", publishJob)).toBeGreaterThan(text.indexOf("Guard release ancestry", publishJob));
+    expect(text.indexOf("- run: npm ci", publishJob)).toBeGreaterThan(text.indexOf("Verify release tag", publishJob));
   });
 });

@@ -18,6 +18,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - The server now exposes 22 tools instead of 20.
+- Node.js 22.19 or newer is required, matching the `undici` runtime dependency.
 - `init` reuses an existing package-owned entry, including legacy `github-fetcher` keys, instead of adding a duplicate.
 - Backups preserve the source file mode.
 

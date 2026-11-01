@@ -16,6 +16,7 @@ async function fixture(): Promise<string> {
     name: "@kurvcygnus/github-fetcher",
     version: "0.2.0",
     mcpName: "io.github.KurvCygnus/github-fetcher",
+    engines: { node: ">=22.19.0" },
     files: ["dist", "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md"],
     scripts: { "verify:launch": "node scripts/verify-launch.mjs" },
   };
@@ -79,5 +80,14 @@ describe("verifyLaunch", () => {
     const result = await verifyLaunch({ root, offline: true });
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toContain("README.md missing heading");
+  });
+
+  it("rejects a Node floor below the runtime dependency", async () => {
+    const root = await fixture();
+    const current = await readFile(join(root, "package.json"), "utf8");
+    await writeFile(join(root, "package.json"), current.replace(">=22.19.0", ">=20.18"));
+    const result = await verifyLaunch({ root, offline: true });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain("engines.node must be >=22.19.0");
   });
 });

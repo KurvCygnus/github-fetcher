@@ -46,6 +46,7 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   if (pkg.name !== PACKAGE_NAME) errors.push(`package.json name must be ${PACKAGE_NAME}`);
   if (pkg.version !== VERSION) errors.push(`package.json version must be ${VERSION}`);
   if (pkg.mcpName !== "io.github.KurvCygnus/github-fetcher") errors.push("package.json mcpName is missing or wrong");
+  if (pkg.engines?.node !== ">=22.19.0") errors.push("package.json engines.node must be >=22.19.0");
   for (const file of ["dist", "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md"]) {
     if (!Array.isArray(pkg.files) || !pkg.files.includes(file)) errors.push(`package.json files missing ${file}`);
   }

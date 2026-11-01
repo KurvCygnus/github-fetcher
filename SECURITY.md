@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published minor version. `0.2.x` is the upcoming release; `0.1.0` is the currently published version.
+Security fixes are provided for the latest published minor version. This repository currently targets the `0.2.x` line.
 
 ## Threat model
 

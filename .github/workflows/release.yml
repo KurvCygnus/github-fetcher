@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Run every check but stop before npm publish and GitHub Release"
+        description: "Run the version check and print publish commands; publishing checks require a real tag"
         type: boolean
         default: true
 

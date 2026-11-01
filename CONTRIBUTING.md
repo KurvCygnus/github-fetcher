@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js >= 20.18 (the release workflow uses Node 24).
+- Node.js >= 22.19 (the release workflow uses Node 24).
 - npm (the repository is a standard npm package with a lockfile).
 
 ## Setup
