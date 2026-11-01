@@ -71,6 +71,7 @@ export function usageFor(subcommand: string | undefined): string {
     "Usage: github-fetcher [serve | <subcommand> ...]",
     "",
     "Bare invocation (or `serve`) starts the MCP stdio server.",
+    "Top-level flags: --help, --version.",
     "",
     "Subcommands:",
     ...lines,
