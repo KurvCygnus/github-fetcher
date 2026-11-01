@@ -1,6 +1,6 @@
 {
   "name": "@kurvcygnus/github-fetcher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read-only GitHub MCP server with token auth, proxy routing, and ETag caching",
   "type": "module",
   "bin": {
