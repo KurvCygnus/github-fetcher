@@ -37,6 +37,6 @@ describe.skipIf(!canCheckDrafts)("article draft", () => {
     expect(article).toContain("60 requests per hour");
     expect(article).toContain("raw.githubusercontent.com");
     expect(article).toContain("## Limitations");
-    expect(article).toContain("facts.md");
+    expect(article).toContain("docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api");
   });
 });

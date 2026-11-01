@@ -54,7 +54,10 @@ const launchKitPaths = [
   ".superpowers/launch/metrics.md",
 ];
 const hasLaunchKit = launchKitPaths.every((path) => existsSync(path));
-const canCheckLaunchKit = hasLaunchKit || !process.env.CI;
+if (process.env.REQUIRE_LAUNCH_KIT === "1" && !hasLaunchKit) {
+  throw new Error(`missing launch kit: ${launchKitPaths.filter((path) => !existsSync(path)).join(", ")}`);
+}
+const canCheckLaunchKit = hasLaunchKit;
 
 describe.skipIf(!canCheckLaunchKit)("launch kit", () => {
   it("tracks the required directory targets and facts", () => {
