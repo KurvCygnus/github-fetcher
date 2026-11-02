@@ -46,6 +46,8 @@ describe("release workflow", () => {
     expect(text).toContain("github.ref != 'refs/heads/main'");
     expect(text).toContain("fetch-depth: 0");
     expect(text).toContain("git merge-base --is-ancestor \"$GITHUB_SHA\" origin/main");
+    expect(text).toContain("git fetch --force --tags origin");
+    expect(text).toContain('test "$(git cat-file -t "$TAG")" = "tag"');
     expect(text).toContain('test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"');
     expect(text).toContain('test "v$VERSION" = "$TAG_NAME"');
     expect(text).toContain("missing changelog version");

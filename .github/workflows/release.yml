@@ -101,8 +101,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git fetch --tags origin
+          git fetch --force --tags origin
           TAG="v$VERSION"
+          test "$(git cat-file -t "$TAG")" = "tag"
           test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"
       - run: npm ci
       - name: Extract release notes
