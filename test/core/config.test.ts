@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       logLevel: "error",
       timeoutMs: 30000,
       maxFileBytes: 262144,
+      exposeIdentity: false,
     });
     expect(config.githubToken).toBeUndefined();
   });
@@ -55,5 +56,24 @@ describe("loadConfig", () => {
     expect(config.timeoutMs).toBe(30000);
     expect(config.maxFileBytes).toBe(262144);
     expect(warn).toHaveBeenCalledTimes(5);
+  });
+
+  it("defaults exposeIdentity to false and accepts the documented opt-in values", () => {
+    expect(loadConfig({}).exposeIdentity).toBe(false);
+    expect(loadConfig({ GITHUB_MCP_EXPOSE_IDENTITY: "" }).exposeIdentity).toBe(false);
+    for (const value of ["1", "true", "TRUE", "Yes", "on"]) {
+      expect(loadConfig({ GITHUB_MCP_EXPOSE_IDENTITY: value }).exposeIdentity).toBe(true);
+    }
+    for (const value of ["0", "false", "NO", "off"]) {
+      expect(loadConfig({ GITHUB_MCP_EXPOSE_IDENTITY: value }).exposeIdentity).toBe(false);
+    }
+  });
+
+  it("warns and falls back on an invalid identity value", () => {
+    const warn = vi.fn();
+    const config = loadConfig({ GITHUB_MCP_EXPOSE_IDENTITY: "maybe" }, warn);
+    expect(config.exposeIdentity).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("Invalid GITHUB_MCP_EXPOSE_IDENTITY: maybe; using false");
   });
 });

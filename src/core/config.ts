@@ -15,6 +15,7 @@ export interface Config {
   logLevel: LogLevel;
   timeoutMs: number;
   maxFileBytes: number;
+  exposeIdentity: boolean;
 }
 
 type Warn = (message: string) => void;
@@ -48,6 +49,18 @@ function pickInteger(
   return parsed;
 }
 
+const EXPOSE_IDENTITY_TRUE = new Set(["1", "true", "yes", "on"]);
+const EXPOSE_IDENTITY_FALSE = new Set(["0", "false", "no", "off"]);
+
+function pickExposeIdentity(value: string | undefined, warn: Warn): boolean {
+  if (value === undefined || value === "") return false;
+  const normalized = value.toLowerCase();
+  if (EXPOSE_IDENTITY_TRUE.has(normalized)) return true;
+  if (EXPOSE_IDENTITY_FALSE.has(normalized)) return false;
+  warn(`Invalid GITHUB_MCP_EXPOSE_IDENTITY: ${value}; using false`);
+  return false;
+}
+
 function optional(value: string | undefined): string | undefined {
   return value === undefined || value === "" ? undefined : value;
 }
@@ -65,5 +78,6 @@ export function loadConfig(env: NodeJS.ProcessEnv, warn: Warn = () => {}): Confi
     logLevel: pickOne(env.GITHUB_MCP_LOG, ["error", "info", "debug"], "error", "GITHUB_MCP_LOG", warn),
     timeoutMs: pickInteger(env.GITHUB_MCP_TIMEOUT_MS, 30000, 1, "GITHUB_MCP_TIMEOUT_MS", warn),
     maxFileBytes: pickInteger(env.GITHUB_MCP_MAX_FILE_BYTES, 262144, 1, "GITHUB_MCP_MAX_FILE_BYTES", warn),
+    exposeIdentity: pickExposeIdentity(env.GITHUB_MCP_EXPOSE_IDENTITY, warn),
   };
 }

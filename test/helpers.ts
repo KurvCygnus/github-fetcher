@@ -7,6 +7,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     logLevel: "error",
     timeoutMs: 30000,
     maxFileBytes: 262144,
+    exposeIdentity: false,
     ...overrides,
   };
 }
