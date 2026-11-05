@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
-import { githubQuery, truncateText } from "./util.js";
+import { truncateText } from "./util.js";
 
 export const apiGetTool = defineTool({
   name: "github_api_get",
@@ -10,7 +10,10 @@ export const apiGetTool = defineTool({
     "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported.",
   inputSchema: {
     path: z.string().describe("Absolute API path, for example /repos/owner/name/readme"),
-    query: z.record(z.string(), z.string()).optional().describe("Query string parameters"),
+    query: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional()
+      .describe("Query parameters; entries override pairs already present in path"),
   },
   annotations: {
     readOnlyHint: true,
@@ -19,14 +22,24 @@ export const apiGetTool = defineTool({
     openWorldHint: true,
   },
   async handler(input, ctx) {
-    const path = input.path;
-    if (!path.startsWith("/") || path.includes("//") || path.includes("..") || path.includes("#") || path.includes("?")) {
-      throw new GithubError("invalid_params", "path must be an absolute API path without .., //, #, or a query string");
+    const separator = input.path.indexOf("?");
+    const pathPart = separator === -1 ? input.path : input.path.slice(0, separator);
+    const queryPart = separator === -1 ? null : input.path.slice(separator + 1);
+    if (!pathPart.startsWith("/") || pathPart.includes("//") || pathPart.includes("..") || pathPart.includes("#")) {
+      throw new GithubError("invalid_params", "path must be an absolute API path without .., //, or #");
     }
-    if (path === "/graphql") {
+    if (queryPart !== null && queryPart.includes("?")) {
+      throw new GithubError("invalid_params", "path must contain at most one query string separator (?)");
+    }
+    if (pathPart === "/graphql") {
       throw new GithubError("unsupported", "GraphQL is not supported; use REST paths");
     }
-    const url = `${path}${githubQuery(input.query ?? {})}`;
+    const params = new URLSearchParams(queryPart ?? "");
+    for (const [key, value] of Object.entries(input.query ?? {})) {
+      params.set(key, String(value));
+    }
+    const queryString = params.toString();
+    const url = `${pathPart}${queryString === "" ? "" : `?${queryString}`}`;
     const response = await ctx.client.apiRaw(url);
     const text = new TextDecoder("utf-8").decode(response.bytes);
     const clipped = truncateText(text, ctx.config.maxFileBytes);

@@ -83,4 +83,60 @@ describe("github_api_get", () => {
     );
     expect(output).toMatchObject({ truncated: true, body: "y".repeat(128) });
   });
+
+  function rawClient(body: string, contentType = "application/json") {
+    return {
+      api: vi.fn(),
+      apiRaw: vi.fn(async () => ({
+        bytes: new TextEncoder().encode(body),
+        headers: new Headers({ "content-type": contentType }),
+        status: 200,
+        contentType,
+      })),
+      raw: vi.fn(),
+    };
+  }
+
+  it("merges a path query string with scalar query values", async () => {
+    const client = rawClient(JSON.stringify({ ok: true }));
+    await apiGetTool.handler(
+      { path: "/search/repositories?q=rust", query: { per_page: 5, fork: true } },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.apiRaw).toHaveBeenCalledWith("/search/repositories?q=rust&per_page=5&fork=true");
+  });
+
+  it("lets explicit query entries override path pairs", async () => {
+    const client = rawClient(JSON.stringify({ ok: true }));
+    await apiGetTool.handler(
+      { path: "/search/issues?q=is:pr", query: { q: "is:issue" } },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.apiRaw).toHaveBeenCalledWith("/search/issues?q=is%3Aissue");
+  });
+
+  it("forwards a path query alone and allows an empty query part", async () => {
+    const client = rawClient(JSON.stringify({ ok: true }));
+    await apiGetTool.handler(
+      { path: "/repos/o/r/issues?state=open" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.apiRaw).toHaveBeenCalledWith("/repos/o/r/issues?state=open");
+    await apiGetTool.handler(
+      { path: "/repos/o/r/issues?" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.apiRaw).toHaveBeenLastCalledWith("/repos/o/r/issues");
+  });
+
+  it("rejects a second query separator and GraphQL with a query", async () => {
+    const client = rawClient(JSON.stringify({ ok: true }));
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await expect(apiGetTool.handler({ path: "/a?b?c" }, ctx)).rejects.toMatchObject({
+      code: "invalid_params",
+    });
+    await expect(apiGetTool.handler({ path: "/graphql?x=1" }, ctx)).rejects.toMatchObject({
+      code: "unsupported",
+    });
+  });
 });
