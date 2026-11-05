@@ -175,6 +175,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 - Redirects are confined to GitHub origins: a redirect that leaves the original host is refused.
 - Tokens appear only in the Authorization header, never in logs, errors, tool output, or the cache; cache keys use a SHA-256 hash of the token.
 - Cache files are written with 0600 permissions (best effort) under the user's own cache directory.
+- Identity is private by default: `github_rate_limit` reports quota only. Setting `GITHUB_MCP_EXPOSE_IDENTITY` opts in to `authenticated_as` and `scopes`; the token and its fingerprint are never returned either way.
 
 ## How it works
 
@@ -196,6 +197,7 @@ Every tool call becomes one GET against the GitHub REST API. A cache layer sits 
 | `GITHUB_CACHE_DIR` | platform cache directory | Overrides the disk cache location. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | Per-request timeout in milliseconds. |
 | `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | Maximum text length returned by content tools before truncation. |
+| `GITHUB_MCP_EXPOSE_IDENTITY` | unset | Opt-in: `1`/`true`/`yes`/`on` makes `github_rate_limit` add `authenticated_as` and `scopes`; every other value keeps identity off. |
 | `GITHUB_MCP_LOG` | `error` | Parsed and validated; currently unused — warnings always go to stderr regardless of level. |
 
 Invalid values are ignored with a warning on stderr and the default applies.
@@ -204,14 +206,14 @@ Invalid values are ignored with a warning on stderr and the default applies.
 
 Agents receive the full input schema for every tool via `tools/list`; this is a name-only map. The groups match the index returned by `github_capabilities`.
 
-- Meta: `github_capabilities`, `github_rate_limit`, `github_api_get` (arbitrary read-only GET on api.github.com; GraphQL unsupported)
-- Repository: `github_repo`, `github_branches`
-- Files: `github_tree`, `github_file`
+- Meta: `github_capabilities` (input signature per tool), `github_rate_limit` (identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; GraphQL unsupported)
+- Repository: `github_repo` (reports `visibility`), `github_branches`
+- Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`), `github_file` (supports 1-based `start_line`/`end_line` ranges)
 - History: `github_commits`
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (throttled breadth comparison of up to 20 repositories in one call)
-- Search: `github_search_repos`, `github_search_code` (token required), `github_search_issues`
+- Search: `github_search_repos` (reports `private` and `visibility` per item; `public_only` filters client-side and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## Troubleshooting

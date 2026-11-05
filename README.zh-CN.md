@@ -175,6 +175,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 - 重定向被限制在 GitHub origin 之内: 离开原主机的重定向会被拒绝.
 - Token 只出现在 Authorization 头里, 绝不进入日志, 错误信息, 工具输出或缓存; 缓存键使用 token 的 SHA-256 哈希.
 - 缓存文件以 0600 权限写入 (尽力而为), 位置在用户自己的缓存目录下.
+- 身份默认私密: `github_rate_limit` 只报告配额. 设置 `GITHUB_MCP_EXPOSE_IDENTITY` 后才追加 `authenticated_as` 和 `scopes`; 无论开关, token 和它的指纹都不会返回.
 
 ## 工作原理
 
@@ -196,6 +197,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 | `GITHUB_CACHE_DIR` | 平台缓存目录 | 覆盖磁盘缓存位置. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | 单次请求超时 (毫秒). |
 | `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | 内容工具返回文本的最大长度, 超出即截断. |
+| `GITHUB_MCP_EXPOSE_IDENTITY` | 未设置 | 显式开启: `1`/`true`/`yes`/`on` 让 `github_rate_limit` 追加 `authenticated_as` 和 `scopes`; 其他取值保持关闭. |
 | `GITHUB_MCP_LOG` | `error` | 会被解析和校验; 目前未使用 - 警告始终写入 stderr, 与级别无关. |
 
 无效值会被忽略, 在 stderr 上给出警告, 然后使用默认值.
@@ -204,14 +206,14 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema, 这里只列名字. 分组与 `github_capabilities` 返回的索引一致.
 
-- Meta: `github_capabilities`, `github_rate_limit`, `github_api_get` (对 api.github.com 的任意只读 GET; 不支持 GraphQL)
-- Repository: `github_repo`, `github_branches`
-- Files: `github_tree`, `github_file`
+- Meta: `github_capabilities` (每个工具带输入签名), `github_rate_limit` (通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; 不支持 GraphQL)
+- Repository: `github_repo` (报告 `visibility`), `github_branches`
+- Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间)
 - History: `github_commits`
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (一次调用对最多 20 个仓库做限速的横向对比)
-- Search: `github_search_repos`, `github_search_code` (需要 token), `github_search_issues`
+- Search: `github_search_repos` (每条结果报告 `private` 和 `visibility`; `public_only` 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## 故障排查
