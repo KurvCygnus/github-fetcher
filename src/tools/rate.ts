@@ -12,6 +12,11 @@ interface RateLimitResponse {
   resources: Record<string, RateResource>;
 }
 
+function parseScopes(header: string | null): string[] {
+  if (header === null) return [];
+  return header.split(",").map((part) => part.trim()).filter((part) => part !== "");
+}
+
 export const rateLimitTool = defineTool({
   name: "github_rate_limit",
   title: "GitHub rate limit",
@@ -30,7 +35,7 @@ export const rateLimitTool = defineTool({
     openWorldHint: true,
   },
   async handler(input, ctx) {
-    const { data } = await ctx.client.api<RateLimitResponse>("/rate_limit", { cacheTtlMs: 0 });
+    const { data, headers } = await ctx.client.api<RateLimitResponse>("/rate_limit", { cacheTtlMs: 0 });
     const projection = Object.fromEntries(
       Object.entries(data.resources).map(([name, value]) => [
         name,
@@ -50,9 +55,22 @@ export const rateLimitTool = defineTool({
         : Object.fromEntries(
             Object.entries(projection).filter(([name]) => name === input.resource),
           );
-    return {
-      auth: ctx.authFingerprint === "anonymous" ? "anonymous" : "token",
-      resources,
-    };
+    const auth = ctx.authFingerprint === "anonymous" ? "anonymous" : "token";
+    if (!ctx.config.exposeIdentity) {
+      return { auth, resources };
+    }
+    const scopes = parseScopes(headers.get("x-oauth-scopes"));
+    //* Identity is best-effort: a failed /user lookup degrades to a null login and
+    //* the quota answer still goes out; the underlying error is never surfaced.
+    let authenticatedAs: string | null = null;
+    if (auth === "token") {
+      try {
+        const user = await ctx.client.api<{ login: string }>("/user", { cacheTtlMs: 300_000 });
+        authenticatedAs = user.data.login;
+      } catch {
+        authenticatedAs = null;
+      }
+    }
+    return { auth, authenticated_as: authenticatedAs, scopes, resources };
   },
 });
