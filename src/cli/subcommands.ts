@@ -30,7 +30,7 @@ export const SUBCOMMANDS = {
   releases: { tool: "github_releases", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", "include-prereleases": "boolean", ...REPO_FRESH } },
   health: { tool: "github_repo_health", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", labels: "string-array", ...REPO_FRESH } },
   "compare-repos": { tool: "github_compare_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", ...REPO_FRESH } },
-  "search-repos": { tool: "github_search_repos", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
+  "search-repos": { tool: "github_search_repos", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", "public-only": "boolean", ...REPO_FRESH } },
   "search-code": { tool: "github_search_code", positional: [{ key: "query", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "search-issues": { tool: "github_search_issues", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   workflows: { tool: "github_workflows", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },

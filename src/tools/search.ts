@@ -13,6 +13,8 @@ interface SearchResponse<T> {
 interface RepoItem {
   full_name: string;
   description: string | null;
+  private: boolean;
+  visibility?: string;
   stargazers_count: number;
   forks_count: number;
   language: string | null;
@@ -50,6 +52,7 @@ export const searchReposTool = defineTool({
     order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    public_only: z.boolean().optional().describe("Drop private repositories from the results"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -75,20 +78,26 @@ export const searchReposTool = defineTool({
     const items = data.items.map((repo) => ({
       full_name: repo.full_name,
       description: repo.description,
+      private: repo.private,
+      visibility: repo.visibility ?? (repo.private ? "private" : "public"),
       stars: repo.stargazers_count,
       forks: repo.forks_count,
       language: repo.language,
       updated_at: repo.updated_at,
       html_url: repo.html_url,
     }));
-    return searchEnvelope(
-      items,
-      data.total_count,
-      data.incomplete_results,
-      page,
-      perPage,
-      headers.get("link"),
-    );
+    const visible = input.public_only === true ? items.filter((repo) => !repo.private) : items;
+    return {
+      ...searchEnvelope(
+        visible,
+        data.total_count,
+        data.incomplete_results,
+        page,
+        perPage,
+        headers.get("link"),
+      ),
+      filtered_count: items.length - visible.length,
+    };
   },
 });
 

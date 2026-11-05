@@ -51,6 +51,73 @@ describe("github_search_repos", () => {
       ],
     });
   });
+
+  const mixed = {
+    total_count: 3,
+    incomplete_results: false,
+    items: [
+      {
+        full_name: "o/public",
+        description: null,
+        private: false,
+        visibility: "public",
+        stargazers_count: 1,
+        forks_count: 0,
+        language: null,
+        updated_at: "2026-11-01T00:00:00Z",
+        html_url: "https://github.com/o/public",
+      },
+      {
+        full_name: "o/private",
+        description: null,
+        private: true,
+        stargazers_count: 0,
+        forks_count: 0,
+        language: null,
+        updated_at: "2026-11-01T00:00:00Z",
+        html_url: "https://github.com/o/private",
+      },
+      {
+        full_name: "o/inner",
+        description: null,
+        private: false,
+        visibility: "internal",
+        stargazers_count: 2,
+        forks_count: 1,
+        language: "TypeScript",
+        updated_at: "2026-11-02T00:00:00Z",
+        html_url: "https://github.com/o/inner",
+      },
+    ],
+  };
+
+  it("keeps every item by default and projects visibility", async () => {
+    const client = clientWith(mixed);
+    const output = await searchReposTool.handler(
+      { query: "x" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output.total_count).toBe(3);
+    expect(output.filtered_count).toBe(0);
+    const items = output.items as Array<{ full_name: string; private: boolean; visibility: string }>;
+    expect(items.map((item) => [item.full_name, item.private, item.visibility])).toEqual([
+      ["o/public", false, "public"],
+      ["o/private", true, "private"],
+      ["o/inner", false, "internal"],
+    ]);
+  });
+
+  it("drops private items and counts them when public_only is true", async () => {
+    const client = clientWith(mixed);
+    const output = await searchReposTool.handler(
+      { query: "x", public_only: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output.total_count).toBe(3);
+    expect(output.filtered_count).toBe(1);
+    const items = output.items as Array<{ full_name: string }>;
+    expect(items.map((item) => item.full_name)).toEqual(["o/public", "o/inner"]);
+  });
 });
 
 describe("github_search_code", () => {

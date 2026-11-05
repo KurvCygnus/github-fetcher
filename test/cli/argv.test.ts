@@ -68,4 +68,11 @@ describe("parseArgs", () => {
   it("covers all twenty-two tools", () => {
     expect(Object.keys(SUBCOMMANDS)).toHaveLength(22);
   });
+
+  it("parses the 0.2.1 parameters", () => {
+    expect(parseArgs(SUBCOMMANDS["search-repos"], ["q", "--public-only"]).input).toEqual({
+      query: "q",
+      public_only: true,
+    });
+  });
 });
