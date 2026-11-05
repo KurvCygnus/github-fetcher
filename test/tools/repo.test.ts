@@ -41,6 +41,7 @@ describe("github_repo", () => {
       full_name: "octocat/Hello-World",
       description: "My first repository on GitHub!",
       private: false,
+      visibility: "public",
       html_url: "https://github.com/octocat/Hello-World",
       default_branch: "master",
       stars: 3875,
@@ -55,5 +56,25 @@ describe("github_repo", () => {
       pushed_at: "2024-01-02T00:00:00Z",
       created_at: "2011-01-26T19:01:12Z",
     });
+  });
+
+  it("passes GitHub's visibility through when present", async () => {
+    //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
+    //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
+    const client = {
+      api: vi.fn(async () => ({
+        data: { ...fixture, private: true, visibility: "private" },
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await repoTool.handler(
+      { repo: "octocat/Hello-World" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ private: true, visibility: "private" });
   });
 });
