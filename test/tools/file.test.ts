@@ -43,6 +43,9 @@ describe("github_file", () => {
       content: "Hello World!\n",
       binary: false,
       truncated: false,
+      start_line: 1,
+      end_line: 2,
+      total_lines: 2,
     });
   });
 
@@ -67,6 +70,89 @@ describe("github_file", () => {
       encoding: null,
       content: null,
       size: png.length,
+      start_line: null,
+      end_line: null,
+      total_lines: null,
+    });
+  });
+
+  it("returns the selected line range with resolved metadata", async () => {
+    const client = clientFor(contents("one\ntwo\nthree\n"));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main", start_line: 2, end_line: 2 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({
+      content: "two\n",
+      start_line: 2,
+      end_line: 2,
+      total_lines: 4,
+      truncated: false,
+    });
+  });
+
+  it("clamps end_line to the last line", async () => {
+    const client = clientFor(contents("one\ntwo\nthree"));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main", start_line: 2, end_line: 99 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({
+      content: "two\nthree",
+      start_line: 2,
+      end_line: 3,
+      total_lines: 3,
+    });
+  });
+
+  it("rejects start_line beyond the end of the file", async () => {
+    const client = clientFor(contents("one\ntwo\nthree"));
+    await expect(
+      fileTool.handler(
+        { repo: "octocat/Hello-World", path: "README.md", ref: "main", start_line: 4 },
+        { client, config: makeConfig(), authFingerprint: "abc" },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_params", message: expect.stringContaining("3 lines") });
+  });
+
+  it("rejects end_line before start_line", async () => {
+    const client = clientFor(contents("one\ntwo\nthree"));
+    await expect(
+      fileTool.handler(
+        { repo: "octocat/Hello-World", path: "README.md", ref: "main", start_line: 3, end_line: 2 },
+        { client, config: makeConfig(), authFingerprint: "abc" },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_params" });
+  });
+
+  it("clips the selected range by bytes and reports truncated", async () => {
+    const client = clientFor(contents("aaaa\nbbbb\n"));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main", start_line: 1 },
+      { client, config: makeConfig({ maxFileBytes: 6 }), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({
+      content: "aaaa\nb",
+      truncated: true,
+      size: 10,
+      start_line: 1,
+      end_line: 3,
+      total_lines: 3,
+    });
+  });
+
+  it("returns the whole empty file", async () => {
+    const client = clientFor(contents(""));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({
+      content: "",
+      truncated: false,
+      start_line: 1,
+      end_line: 1,
+      total_lines: 1,
     });
   });
 });

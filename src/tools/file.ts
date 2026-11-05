@@ -33,6 +33,8 @@ export const fileTool = defineTool({
     repo: z.string().describe("Repository in owner/name form"),
     path: z.string().describe("File path inside the repository"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
+    start_line: z.number().int().min(1).optional().describe("First line to return, 1-based; defaults to 1"),
+    end_line: z.number().int().min(1).optional().describe("Last line to return, inclusive; defaults to the file end"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -76,6 +78,9 @@ export const fileTool = defineTool({
         content: null,
         binary: true,
         truncated: false,
+        start_line: null,
+        end_line: null,
+        total_lines: null,
       };
     }
 
@@ -83,7 +88,29 @@ export const fileTool = defineTool({
     if (text === null) {
       throw new GithubError("unsupported", "file is not valid UTF-8");
     }
-    const clipped = truncateText(text, ctx.config.maxFileBytes);
+    //* A line is a newline-separated segment; a trailing newline produces a final
+    //* empty line, following editor convention. The slice keeps the newline that
+    //* terminates endLine when one exists, so concatenating slices rebuilds the file.
+    const segments = text.split("\n");
+    const totalLines = segments.length;
+    const startLine = input.start_line ?? 1;
+    if (startLine > totalLines) {
+      throw new GithubError("invalid_params", `start_line ${startLine} is beyond the end of the file (${totalLines} lines)`);
+    }
+    const requestedEnd = input.end_line ?? totalLines;
+    if (requestedEnd < startLine) {
+      throw new GithubError("invalid_params", `end_line ${requestedEnd} is before start_line ${startLine}`);
+    }
+    const endLine = Math.min(requestedEnd, totalLines);
+    let startOffset = 0;
+    for (let index = 1; index < startLine; index++) {
+      startOffset += (segments[index - 1] ?? "").length + 1;
+    }
+    let endOffset = startOffset;
+    for (let index = startLine; index <= endLine; index++) {
+      endOffset += (segments[index - 1] ?? "").length + (index < totalLines ? 1 : 0);
+    }
+    const clipped = truncateText(text.slice(startOffset, endOffset), ctx.config.maxFileBytes);
     return {
       repo: `${owner}/${name}`,
       path: data.path,
@@ -94,6 +121,9 @@ export const fileTool = defineTool({
       content: clipped.text,
       binary: false,
       truncated: clipped.truncated,
+      start_line: startLine,
+      end_line: endLine,
+      total_lines: totalLines,
     };
   },
 });

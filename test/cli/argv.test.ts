@@ -74,5 +74,11 @@ describe("parseArgs", () => {
       query: "q",
       public_only: true,
     });
+    expect(parseArgs(SUBCOMMANDS.file, ["o/r", "README.md", "--start-line", "2", "--end-line", "4"]).input).toEqual({
+      repo: "o/r",
+      path: "README.md",
+      start_line: 2,
+      end_line: 4,
+    });
   });
 });
