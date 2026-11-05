@@ -35,6 +35,7 @@ export const treeTool = defineTool({
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
     path: z.string().optional().describe("Subdirectory path inside the ref"),
     recursive: z.boolean().optional().describe("Return the complete tree recursively"),
+    max_entries: z.number().int().min(1).max(10000).optional().describe("Maximum entries returned, default 1000"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -54,16 +55,35 @@ export const treeTool = defineTool({
       `/repos/${owner}/${name}/git/trees/${treeish}${query}`,
       { fresh: input.fresh, cacheTtlMs: 600_000 },
     );
+    const all = (data.tree ?? []).map((entry) => ({
+      path: entry.path,
+      type: normalizeType(entry),
+      size: entry.size ?? null,
+      sha: entry.sha,
+    }));
+    const maxEntries = input.max_entries ?? 1000;
+    //* The summary describes the full API tree, so a capped page still reports the
+    //* repository's real composition; total_entries is GitHub's response size, not
+    //* the true repository total when GitHub itself truncated the tree.
+    const summary = { files: 0, dirs: 0, symlinks: 0, submodules: 0 };
+    for (const entry of all) {
+      if (entry.type === "file") summary.files += 1;
+      else if (entry.type === "dir") summary.dirs += 1;
+      else if (entry.type === "symlink") summary.symlinks += 1;
+      else summary.submodules += 1;
+    }
+    const locallyTruncated = all.length > maxEntries;
+    const truncated = locallyTruncated || data.truncated;
     return {
       ref,
       path: input.path ?? null,
-      entries: (data.tree ?? []).map((entry) => ({
-        path: entry.path,
-        type: normalizeType(entry),
-        size: entry.size ?? null,
-        sha: entry.sha,
-      })),
-      truncated: data.truncated,
+      entries: all.slice(0, maxEntries),
+      total_entries: all.length,
+      returned_entries: Math.min(all.length, maxEntries),
+      summary,
+      truncated,
+      api_truncated: data.truncated,
+      ...(truncated ? { hint: "increase max_entries or narrow path/ref" } : {}),
     };
   },
 });

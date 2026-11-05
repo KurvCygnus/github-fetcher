@@ -80,5 +80,9 @@ describe("parseArgs", () => {
       start_line: 2,
       end_line: 4,
     });
+    expect(parseArgs(SUBCOMMANDS.tree, ["o/r", "--max-entries", "50"]).input).toEqual({
+      repo: "o/r",
+      max_entries: 50,
+    });
   });
 });
