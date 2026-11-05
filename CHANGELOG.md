@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-11-05
+
+### Added
+
+- `github_search_repos` reports `private` and `visibility` per result and accepts `public_only` with a `filtered_count`.
+- `github_repo` reports `visibility`.
+- `github_rate_limit` identity opt-in: `GITHUB_MCP_EXPOSE_IDENTITY=1` adds `authenticated_as` and `scopes`; off by default and never emits the token or its fingerprint.
+- `github_api_get` accepts a query string in `path` and number/boolean `query` values; explicit `query` entries override path pairs.
+- `github_file` accepts 1-based `start_line`/`end_line` and reports `total_lines`.
+- `github_tree` caps output at `max_entries` (default 1000) and reports `total_entries`, `returned_entries`, a type `summary`, and `api_truncated`.
+- `github_capabilities` lists a compact input `signature` for every tool.
+- CLI flags: `search-repos --public-only`, `file --start-line/--end-line`, `tree --max-entries`.
+
+### Changed
+
+- `github_tree` returns at most 1000 entries by default; larger trees report `truncated: true` with a hint.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

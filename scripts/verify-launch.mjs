@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const PACKAGE_NAME = "@kurvcygnus/github-fetcher";
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const TOOL_COUNT = 22;
 const INSTALL = "npx -y @kurvcygnus/github-fetcher@latest";
 
@@ -83,7 +83,7 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   }
 
   const changelog = await read("CHANGELOG.md");
-  if (!changelog.includes("## [0.2.0]")) errors.push("CHANGELOG.md missing 0.2.0 section");
+  if (!changelog.includes("## [0.2.1]")) errors.push("CHANGELOG.md missing 0.2.1 section");
   await read("SECURITY.md");
   await read("CONTRIBUTING.md");
 

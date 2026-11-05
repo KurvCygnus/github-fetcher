@@ -14,14 +14,14 @@ async function fixture(): Promise<string> {
 
   const pkg = {
     name: "@kurvcygnus/github-fetcher",
-    version: "0.2.0",
+    version: "0.2.1",
     mcpName: "io.github.KurvCygnus/github-fetcher",
     engines: { node: ">=22.19.0" },
     files: ["dist", "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md"],
     scripts: { "verify:launch": "node scripts/verify-launch.mjs" },
   };
   await writeFile(join(root, "package.json"), JSON.stringify(pkg));
-  await writeFile(join(root, "src/core/version.ts"), 'export const VERSION = "0.2.0";\n');
+  await writeFile(join(root, "src/core/version.ts"), 'export const VERSION = "0.2.1";\n');
   await writeFile(join(root, "src/tools/registry.ts"), "export const EXPECTED_TOOL_COUNT = 22;\n");
 
   const tools = Array.from({ length: 22 }, (_, index) => `github_tool_${index}`).join(", ");
@@ -42,13 +42,13 @@ async function fixture(): Promise<string> {
     "https://github.com/KurvCygnus/github-fetcher/blob/main/README.zh-CN.md",
     tools,
   ].join("\n"));
-  await writeFile(join(root, "CHANGELOG.md"), "## [0.2.0]\n");
+  await writeFile(join(root, "CHANGELOG.md"), "## [0.2.1]\n");
   await writeFile(join(root, "SECURITY.md"), "# Security\n");
   await writeFile(join(root, "CONTRIBUTING.md"), "# Contributing\n");
   await writeFile(join(root, "server.json"), JSON.stringify({
     name: "io.github.KurvCygnus/github-fetcher",
-    version: "0.2.0",
-    packages: [{ identifier: "@kurvcygnus/github-fetcher", version: "0.2.0", transport: { type: "stdio" } }],
+    version: "0.2.1",
+    packages: [{ identifier: "@kurvcygnus/github-fetcher", version: "0.2.1", transport: { type: "stdio" } }],
   }));
   return root;
 }
