@@ -26,7 +26,7 @@ export const rateLimitTool = defineTool({
     resource: z
       .string()
       .optional()
-      .describe("Limit the projection to one resource bucket, e.g. core or search"),
+      .describe("Limit the projection to one resource bucket, e.g. core or search; omit for all buckets"),
   },
   annotations: {
     readOnlyHint: true,

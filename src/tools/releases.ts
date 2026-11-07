@@ -92,7 +92,7 @@ export const releasesTool = defineTool({
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     include_prereleases: z.boolean().optional().describe("Include prerelease and draft releases, default true"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },

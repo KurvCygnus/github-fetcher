@@ -47,12 +47,12 @@ export const searchReposTool = defineTool({
   description:
     "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see. Returns {total_count, incomplete_results, filtered_count, items[{full_name, description, private, visibility, stars, forks, language, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
-    query: z.string().describe("GitHub repository search query"),
-    sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field"),
-    order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
+    query: z.string().describe("GitHub repository search syntax, like stars:>100 language:rust"),
+    sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field: stars, forks, help-wanted-issues, or updated"),
+    order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
-    public_only: z.boolean().optional().describe("Drop private repositories from the results"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
+    public_only: z.boolean().optional().describe("Drop private repositories from the results; defaults to true, pass false to include private items the token can see"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -113,7 +113,7 @@ export const searchCodeTool = defineTool({
   inputSchema: {
     query: z.string().describe("GitHub code search query"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -162,10 +162,10 @@ export const searchIssuesTool = defineTool({
     "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name. For per-repository aggregate counts, use github_repo_health. Returns {total_count, incomplete_results, items[{repo, number, title, state, type, author, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub issue search query"),
-    sort: z.enum(["comments", "reactions", "created", "updated"]).optional().describe("Sort field"),
-    order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
+    sort: z.enum(["comments", "reactions", "created", "updated"]).optional().describe("Sort field: comments, reactions, created, or updated"),
+    order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

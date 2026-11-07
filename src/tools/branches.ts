@@ -16,7 +16,7 @@ export const branchesTool = defineTool({
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

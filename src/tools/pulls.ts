@@ -101,10 +101,10 @@ export const prsTool = defineTool({
     state: z.enum(["open", "closed", "all"]).optional().describe("Pull request state, default open"),
     base: z.string().optional().describe("Base branch filter"),
     head: z.string().optional().describe("Head branch filter, owner:branch"),
-    sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().describe("Sort field"),
-    direction: z.enum(["asc", "desc"]).optional().describe("Sort direction"),
+    sort: z.enum(["created", "updated", "popularity", "long-running"]).optional().describe("Sort field: created, updated, popularity, or long-running"),
+    direction: z.enum(["asc", "desc"]).optional().describe("Sort direction: asc or desc"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

@@ -133,10 +133,10 @@ export const issuesTool = defineTool({
     type: z.enum(["issue", "pr", "all"]).optional().describe("Item kind, default issue"),
     state: z.enum(["open", "closed", "all"]).optional().describe("Issue state, default open"),
     labels: z.string().optional().describe("Comma-separated label names"),
-    sort: z.enum(["created", "updated", "comments"]).optional().describe("Sort field"),
-    direction: z.enum(["asc", "desc"]).optional().describe("Sort direction"),
+    sort: z.enum(["created", "updated", "comments"]).optional().describe("Sort field: created, updated, or comments"),
+    direction: z.enum(["asc", "desc"]).optional().describe("Sort direction: asc or desc"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
-    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, default 20"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

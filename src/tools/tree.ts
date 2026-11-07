@@ -35,7 +35,7 @@ export const treeTool = defineTool({
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
     path: z.string().optional().describe("Subdirectory path inside the ref"),
     recursive: z.boolean().optional().describe("Return the complete tree recursively"),
-    max_entries: z.number().int().min(1).max(10000).optional().describe("Maximum entries returned, default 1000"),
+    max_entries: z.number().int().min(1).max(10000).optional().describe("Maximum entries returned, 1-10000, default 1000"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

@@ -21,7 +21,55 @@ describe("CAPABILITY_GROUPS", () => {
   it("keeps every summary non-empty and within the index budget", () => {
     for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
       expect(entry.summary.length, name).toBeGreaterThan(0);
-      expect(entry.summary.length, name).toBeLessThanOrEqual(400);
+      expect(entry.summary.length, name).toBeLessThanOrEqual(250);
+    }
+  });
+
+  it("derives input rows from the registered schemas", async () => {
+    const output = await capabilitiesTool.handler({}, {
+      client: {} as never,
+      config: makeConfig(),
+      authFingerprint: "abc",
+    });
+    const snapshot = output.groups as Array<{
+      group: string;
+      tools: Array<{ name: string; input: Array<{ name: string; optional: boolean; description: string }> }>;
+    }>;
+    const rows = snapshot.flatMap((group) => group.tools);
+    const rate = rows.find((tool) => tool.name === "github_rate_limit")!;
+    expect(rate.input).toEqual([
+      {
+        name: "resource",
+        optional: true,
+        description: "Limit the projection to one resource bucket, e.g. core or search; omit for all buckets",
+      },
+    ]);
+    const capabilities = rows.find((tool) => tool.name === "github_capabilities")!;
+    expect(capabilities.input).toEqual([]);
+    expect(rows).toHaveLength(22);
+  });
+
+  it("slims every summary to one line with its envelope tag", () => {
+    const itemTools = [
+      "github_branches", "github_commits", "github_issues", "github_prs", "github_releases",
+      "github_workflows", "github_workflow_runs", "github_search_repos", "github_search_code",
+      "github_search_issues",
+    ];
+    const singleTools = [
+      "github_repo", "github_file", "github_issue", "github_pr", "github_release",
+      "github_workflow_run", "github_rate_limit", "github_capabilities", "github_repo_health",
+      "github_compare_repos",
+    ];
+    for (const name of itemTools) {
+      expect(CAPABILITY_GROUPS[name]!.summary.endsWith("Envelope: items[]"), name).toBe(true);
+    }
+    for (const name of singleTools) {
+      expect(CAPABILITY_GROUPS[name]!.summary.endsWith("Envelope: single object"), name).toBe(true);
+    }
+    expect(CAPABILITY_GROUPS.github_tree!.summary.endsWith("Envelope: entries[]")).toBe(true);
+    expect(CAPABILITY_GROUPS.github_api_get!.summary.endsWith("Envelope: {status, content_type, body}")).toBe(true);
+    for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
+      expect(entry.summary.length, name).toBeLessThanOrEqual(250);
     }
   });
 });
