@@ -155,4 +155,22 @@ describe("github_file", () => {
       total_lines: 1,
     });
   });
+
+  it("clips the selected range to the per-call byte budget", async () => {
+    const client = clientFor(contents("aaaa\nbbbb\n"));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main", max_bytes: 3 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ content: "aaa", truncated: true, size: 10 });
+  });
+
+  it("caps max_bytes at the configured global budget", async () => {
+    const client = clientFor(contents("aaaa\nbbbb\n"));
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main", max_bytes: 1_000_000 },
+      { client, config: makeConfig({ maxFileBytes: 4 }), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ content: "aaaa", truncated: true });
+  });
 });

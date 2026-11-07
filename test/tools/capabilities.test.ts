@@ -55,7 +55,7 @@ describe("github_capabilities", () => {
       "repo, ref?, path?, recursive?, max_entries?, fresh?",
     );
     expect(rows.find((tool) => tool.name === "github_file")?.signature).toBe(
-      "repo, path, ref?, start_line?, end_line?, fresh?",
+      "repo, path, ref?, start_line?, end_line?, max_bytes?, fresh?",
     );
     expect(rows.find((tool) => tool.name === "github_search_repos")?.signature).toBe(
       "query, sort?, order?, page?, per_page?, public_only?, fresh?",

@@ -35,6 +35,7 @@ export const fileTool = defineTool({
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
     start_line: z.number().int().min(1).optional().describe("First line to return, 1-based; defaults to 1"),
     end_line: z.number().int().min(1).optional().describe("Last line to return, inclusive; defaults to the file end"),
+    max_bytes: z.number().int().min(1).optional().describe("Per-call byte budget for the returned text; defaults to GITHUB_MCP_MAX_FILE_BYTES"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -110,7 +111,8 @@ export const fileTool = defineTool({
     for (let index = startLine; index <= endLine; index++) {
       endOffset += (segments[index - 1] ?? "").length + (index < totalLines ? 1 : 0);
     }
-    const clipped = truncateText(text.slice(startOffset, endOffset), ctx.config.maxFileBytes);
+    const budget = Math.min(input.max_bytes ?? ctx.config.maxFileBytes, ctx.config.maxFileBytes);
+    const clipped = truncateText(text.slice(startOffset, endOffset), budget);
     return {
       repo: `${owner}/${name}`,
       path: data.path,
