@@ -83,7 +83,16 @@ export const treeTool = defineTool({
       summary,
       truncated,
       api_truncated: data.truncated,
-      ...(truncated ? { hint: "increase max_entries or narrow path/ref" } : {}),
+      ...(
+        truncated
+          ? {
+              hint:
+                locallyTruncated && !data.truncated
+                  ? "increase max_entries or narrow path/ref"
+                  : "narrow path/ref; GitHub truncated the tree",
+            }
+          : {}
+      ),
     };
   },
 });

@@ -136,7 +136,7 @@ describe("github_tree", () => {
     expect(snapshot.api_truncated).toBe(true);
     expect(snapshot.truncated).toBe(true);
     expect(snapshot.total_entries).toBe(3);
-    expect(snapshot.hint).toBe("increase max_entries or narrow path/ref");
+    expect(snapshot.hint).toBe("narrow path/ref; GitHub truncated the tree");
   });
 
   it("enforces the max_entries bounds through the schema", () => {
