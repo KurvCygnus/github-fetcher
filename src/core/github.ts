@@ -43,6 +43,24 @@ export interface GithubClientOptions {
 
 const DEFAULT_TTL_MS = 120_000;
 
+//* The path part before the first ? carries traversal semantics; the query part
+//* does not, so .. is legitimate there (range searches like stars:10..20). A raw
+//* # is rejected on the whole string: fetch treats it as a fragment and would
+//! silently truncate the request, so encoded %23 is the only way through.
+function validateApiPath(path: string): void {
+  if (path.includes("#")) {
+    throw new GithubError("invalid_params", "path must be URL-encoded; a raw # starts a fragment and would truncate the request");
+  }
+  const separator = path.indexOf("?");
+  const pathPart = separator === -1 ? path : path.slice(0, separator);
+  if (!pathPart.startsWith("/") || pathPart.startsWith("//") || pathPart.includes("..")) {
+    throw new GithubError("invalid_params", "path must be an absolute API path without .. or //");
+  }
+  if (separator !== -1 && path.slice(separator + 1).includes("?")) {
+    throw new GithubError("invalid_params", "path must contain at most one query string separator (?)");
+  }
+}
+
 export class GithubClient implements GitHubApi {
   private readonly now: () => number;
 
@@ -66,9 +84,7 @@ export class GithubClient implements GitHubApi {
   }
 
   async apiRaw(path: string): Promise<RawApiResult> {
-    if (!path.startsWith("/") || path.startsWith("//") || path.includes("..") || path.includes("#")) {
-      throw new GithubError("invalid_params", "path must be an absolute API path without .. or #");
-    }
+    validateApiPath(path);
     const url = `https://api.github.com${path}`;
     const response = await this.options.http.get(url, { accept: "application/vnd.github+json" });
     return {

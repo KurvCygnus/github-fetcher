@@ -66,6 +66,24 @@ describe("GithubClient", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it("allows dot-dot and rejects only raw fragments inside the query part", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    const result = await client.apiRaw("/search/issues?q=stars:10..20");
+    expect(result.status).toBe(200);
+    expect(get.mock.calls[0]![0]).toBe("https://api.github.com/search/issues?q=stars:10..20");
+    await expect(client.apiRaw("/search/issues?q=stars:10..20&x=1#frag")).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("fragment"),
+    });
+    await expect(client.apiRaw("/search/issues?q=a?b")).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("at most one query string separator"),
+    });
+  });
+
   it("rejects non-raw hosts in raw with unsupported", async () => {
     const { client, get } = harness();
     await expect(client.raw("https://api.github.com/repos/a/b")).rejects.toMatchObject({
