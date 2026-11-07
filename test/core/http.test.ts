@@ -169,7 +169,8 @@ describe("HttpClient", () => {
     expect(fetchImpl.mock.calls[1]![0]).toBe("https://api.github.com/repos/new/name");
   });
 
-  //? R1 (controller ruling): the plan's "network_error" was a typo; ErrorCode has "network".
+  //? Cross-origin redirect refusals are transport-level failures and carry the
+  //? "network" code; the error-code set has no dedicated redirect code.
   it("rejects redirects that leave GitHub", async () => {
     const fetchImpl = vi.fn(
       async () => new Response(null, { status: 302, headers: { location: "https://evil.example/x" } }),
