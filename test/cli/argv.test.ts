@@ -1,6 +1,16 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { CliUsageError, parseArgs } from "../../src/cli/argv.js";
 import { SUBCOMMANDS } from "../../src/cli/subcommands.js";
+import { tools } from "../../src/tools/index.js";
+
+//? Zod 4 wraps .optional() fields in a ZodOptional schema and instanceof cannot see through
+//? the wrapper, so a number flag whose schema is z.number().optional() would fail a bare
+//? ZodNumber check. Strip the wrapper first; this is the same optionality the signature
+//? guard in capabilities.test.ts derives its "?" marker from.
+function bareType(field: z.ZodType): z.ZodType {
+  return field instanceof z.ZodOptional ? bareType(field.unwrap() as z.ZodType) : field;
+}
 
 describe("parseArgs", () => {
   it("maps positionals and converts flag kinds", () => {
@@ -84,5 +94,35 @@ describe("parseArgs", () => {
       repo: "o/r",
       max_entries: 50,
     });
+  });
+
+  it("covers every tool input with a positional or flag of a compatible kind", () => {
+    for (const [name, spec] of Object.entries(SUBCOMMANDS)) {
+      const tool = tools.find((definition) => definition.name === spec.tool);
+      expect(tool, name).toBeDefined();
+      const shape = tool!.inputSchema as Record<string, z.ZodType>;
+      const cliKeys = new Set<string>([
+        ...spec.positional.map((slot) => slot.key),
+        ...Object.keys(spec.flags).map((flag) => flag.replace(/-/g, "_")),
+      ]);
+      expect([...cliKeys].sort(), `${name} keys`).toEqual(Object.keys(shape).sort());
+      for (const [flag, kind] of Object.entries(spec.flags)) {
+        const field = bareType(shape[flag.replace(/-/g, "_")]!);
+        if (kind === "number") expect(field instanceof z.ZodNumber, `${name}.${flag}`).toBe(true);
+        if (kind === "boolean") expect(field instanceof z.ZodBoolean, `${name}.${flag}`).toBe(true);
+        //? github_api_get's --query takes comma-joined key=value pairs that run.ts folds into
+        //? a record before validation, so a record schema is as compatible with a string-array
+        //? flag as an array schema is.
+        if (kind === "string-array") {
+          expect(field instanceof z.ZodArray || field instanceof z.ZodRecord, `${name}.${flag}`).toBe(true);
+        }
+      }
+      for (const slot of spec.positional) {
+        if (slot.kind === "number") {
+          const field = bareType(shape[slot.key]!);
+          expect(field instanceof z.ZodNumber, `${name}.${slot.key}`).toBe(true);
+        }
+      }
+    }
   });
 });

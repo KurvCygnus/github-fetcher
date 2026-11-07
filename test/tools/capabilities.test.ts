@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { CAPABILITY_GROUPS, capabilitiesTool } from "../../src/tools/capabilities.js";
 import { allTools } from "../../src/tools/registry.js";
@@ -70,6 +71,18 @@ describe("CAPABILITY_GROUPS", () => {
     expect(CAPABILITY_GROUPS.github_api_get!.summary.endsWith("Envelope: {status, content_type, body}")).toBe(true);
     for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
       expect(entry.summary.length, name).toBeLessThanOrEqual(250);
+    }
+  });
+
+  it("derives every capability signature from the registered input schema", () => {
+    for (const tool of allTools) {
+      const shape = tool.inputSchema as Record<string, z.ZodType>;
+      const keys = Object.keys(shape);
+      const derived =
+        keys.length === 0
+          ? "none"
+          : keys.map((key) => (shape[key] instanceof z.ZodOptional ? `${key}?` : key)).join(", ");
+      expect(CAPABILITY_GROUPS[tool.name]?.signature, tool.name).toBe(derived);
     }
   });
 });
