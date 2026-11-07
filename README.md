@@ -179,7 +179,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 
 ## How it works
 
-Every tool call becomes one GET against the GitHub REST API. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every API-reading tool except `github_rate_limit` and `github_api_get` accepts a `fresh` option that bypasses the cache for a single request; `github_capabilities` takes no input. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
+Every tool call becomes one GET against the GitHub REST API. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every API-reading tool except `github_rate_limit` accepts a `fresh` option that bypasses the cache for a single request; `github_api_get` responses are cached like every other tool and report `cache` and `cache_age_seconds`; `github_capabilities` takes no input. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 
@@ -196,7 +196,7 @@ Every tool call becomes one GET against the GitHub REST API. A cache layer sits 
 | `GITHUB_CACHE` | `disk` | Cache backend: `disk`, `memory`, or `off`. |
 | `GITHUB_CACHE_DIR` | platform cache directory | Overrides the disk cache location. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | Per-request timeout in milliseconds. |
-| `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | Maximum text length returned by content tools before truncation. |
+| `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | Maximum response text in UTF-8 bytes before truncation (per-call `max_bytes` caps it further). |
 | `GITHUB_MCP_EXPOSE_IDENTITY` | unset | Opt-in: `1`/`true`/`yes`/`on` makes `github_rate_limit` add `authenticated_as` and `scopes`; every other value keeps identity off. |
 | `GITHUB_MCP_LOG` | `error` | Parsed and validated; currently unused — warnings always go to stderr regardless of level. |
 
@@ -204,11 +204,11 @@ Invalid values are ignored with a warning on stderr and the default applies.
 
 ## Tool capabilities at a glance
 
-Agents receive the full input schema for every tool via `tools/list`; this is a name-only map. The groups match the index returned by `github_capabilities`.
+Agents receive the full input schema for every tool via `tools/list`; `github_capabilities` carries the same facts as derived per-tool input rows (name, optionality, description), so the index and the schema cannot drift apart. The groups match the index returned by `github_capabilities`.
 
 - Meta: `github_capabilities` (one-line summaries carrying each tool's key input contracts, plus an input signature), `github_rate_limit` (identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; GraphQL unsupported)
 - Repository: `github_repo` (reports `visibility`), `github_branches`
-- Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`), `github_file` (supports 1-based `start_line`/`end_line` ranges)
+- Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`), `github_file` (supports 1-based `start_line`/`end_line` ranges and a per-call `max_bytes` budget)
 - History: `github_commits`
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`

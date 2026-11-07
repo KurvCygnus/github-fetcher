@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- Every tool description declares its output shape in a `Returns` sentence, and `github_capabilities` summaries carry an `Envelope:` tag.
+- `github_api_get` responses join the ETag cache; the tool accepts `fresh` and reports `cache` and `cache_age_seconds`.
+- `github_file` accepts a per-call `max_bytes` budget on top of `GITHUB_MCP_MAX_FILE_BYTES`.
+- Drift guards keep capability signatures and CLI flags in lockstep with the tool schemas.
+
+### Changed
+
+- `github_search_repos` now defaults to `public_only: true`; private repositories enter results only with an explicit `public_only: false`.
+- Truncation clips at real UTF-8 bytes, matching the `BYTES` name of the budget variables.
+- The `github_tree` hint names the cause: GitHub-side truncation suggests narrowing path/ref instead of raising `max_entries`.
+
+### Fixed
+
+- Range-style query values (`stars:10..20`) pass `github_api_get`; the path-part traversal checks stay intact and raw `#` fragments stay rejected.
+
 ## [0.2.1] - 2026-11-05
 
 ### Added

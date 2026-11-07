@@ -179,7 +179,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 ## 工作原理
 
-每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 和 `github_api_get` 外, 每个读取 API 的工具都接受 `fresh` 选项, 为单次请求绕过缓存; `github_capabilities` 不接受输入. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
+每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 外, 每个读取 API 的工具都接受 `fresh` 选项, 为单次请求绕过缓存; `github_api_get` 的响应与其他工具一样进缓存, 并报告 `cache` 和 `cache_age_seconds`; `github_capabilities` 不接受输入. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 
@@ -196,7 +196,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 | `GITHUB_CACHE` | `disk` | 缓存后端: `disk`, `memory` 或 `off`. |
 | `GITHUB_CACHE_DIR` | 平台缓存目录 | 覆盖磁盘缓存位置. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | 单次请求超时 (毫秒). |
-| `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | 内容工具返回文本的最大长度, 超出即截断. |
+| `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | 响应文本的 UTF-8 字节上限, 超出即截断 (单次调用可用 `max_bytes` 进一步收紧). |
 | `GITHUB_MCP_EXPOSE_IDENTITY` | 未设置 | 显式开启: `1`/`true`/`yes`/`on` 让 `github_rate_limit` 追加 `authenticated_as` 和 `scopes`; 其他取值保持关闭. |
 | `GITHUB_MCP_LOG` | `error` | 会被解析和校验; 目前未使用 - 警告始终写入 stderr, 与级别无关. |
 
@@ -204,11 +204,11 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 ## 工具一览
 
-Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema, 这里只列名字. 分组与 `github_capabilities` 返回的索引一致.
+Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_capabilities` 的每行还带从同一 schema 派生的输入行 (名字, 可选性, 说明), 索引与 schema 不会漂移. 分组与 `github_capabilities` 返回的索引一致.
 
 - Meta: `github_capabilities` (每条摘要带关键输入契约, 每个工具带输入签名), `github_rate_limit` (通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; 不支持 GraphQL)
 - Repository: `github_repo` (报告 `visibility`), `github_branches`
-- Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间)
+- Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间, 以及单次调用的 `max_bytes` 预算)
 - History: `github_commits`
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`
