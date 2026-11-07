@@ -206,7 +206,7 @@ Invalid values are ignored with a warning on stderr and the default applies.
 
 Agents receive the full input schema for every tool via `tools/list`; this is a name-only map. The groups match the index returned by `github_capabilities`.
 
-- Meta: `github_capabilities` (input signature per tool), `github_rate_limit` (identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; GraphQL unsupported)
+- Meta: `github_capabilities` (one-line summaries carrying each tool's key input contracts, plus an input signature), `github_rate_limit` (identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; GraphQL unsupported)
 - Repository: `github_repo` (reports `visibility`), `github_branches`
 - Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`), `github_file` (supports 1-based `start_line`/`end_line` ranges)
 - History: `github_commits`

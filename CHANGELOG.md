@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_file` accepts 1-based `start_line`/`end_line` and reports `total_lines`.
 - `github_tree` caps output at `max_entries` (default 1000) and reports `total_entries`, `returned_entries`, a type `summary`, and `api_truncated`.
 - `github_capabilities` lists a compact input `signature` for every tool.
+- `github_capabilities` summaries carry each tool's key input contracts (formats, defaults, enums) so agents can call correctly from the index alone.
 - CLI flags: `search-repos --public-only`, `file --start-line/--end-line`, `tree --max-entries`.
 
 ### Changed

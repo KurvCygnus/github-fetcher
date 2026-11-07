@@ -15,6 +15,15 @@ describe("CAPABILITY_GROUPS", () => {
       expect(entry.signature.length, name).toBeGreaterThan(0);
     }
   });
+
+  //* The index is meant to be read in one shot before any call; a summary that
+  //* balloons past this budget would make the whole listing expensive to ingest.
+  it("keeps every summary non-empty and within the index budget", () => {
+    for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
+      expect(entry.summary.length, name).toBeGreaterThan(0);
+      expect(entry.summary.length, name).toBeLessThanOrEqual(400);
+    }
+  });
 });
 
 describe("github_capabilities", () => {
