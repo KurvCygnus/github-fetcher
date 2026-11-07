@@ -80,7 +80,7 @@ export const compareReposTool = defineTool({
   name: "github_compare_repos",
   title: "GitHub repository comparison",
   description:
-    "Throttled multi-repo breadth comparison: stars, open issue/PR counts, window closed count, and latest release for up to 20 repositories in one call. About 5 upstream calls per repo, roughly 10 repos/minute (search quota). Label-level detail lives in github_repo_health.",
+    "Throttled multi-repo breadth comparison: stars, open issue/PR counts, window closed count, and latest release for up to 20 repositories in one call. About 5 upstream calls per repo, roughly 10 repos/minute (search quota). Label-level detail lives in github_repo_health. Returns {window_days, repos[{repo, stars, has_issues, has_discussions, open_issues, open_prs, search_unavailable, window, latest_release} or {repo, error}], elapsed_ms}.",
   inputSchema: {
     repos: z.array(z.string()).min(1).max(20).describe("Repositories in owner/name form"),
     window_days: z.number().int().min(1).max(365).optional().describe("Analysis window in days, default 30"),

@@ -7,7 +7,7 @@ export const apiGetTool = defineTool({
   name: "github_api_get",
   title: "GitHub API GET",
   description:
-    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported.",
+    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported. Returns {status, content_type, body, truncated, cache, cache_age_seconds}.",
   inputSchema: {
     path: z.string().describe("Absolute API path, for example /repos/owner/name/readme"),
     query: z

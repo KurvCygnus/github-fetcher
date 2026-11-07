@@ -28,7 +28,7 @@ export const fileTool = defineTool({
   name: "github_file",
   title: "GitHub file",
   description:
-    "Read one file at a ref. Returns UTF-8 text when possible, never binary bytes, and reports sha, size, and truncation.",
+    "Read one file at a ref. Returns UTF-8 text when possible, never binary bytes, and reports sha, size, and truncation. Returns {repo, path, ref, sha, size, encoding, content, binary, truncated, start_line, end_line, total_lines}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     path: z.string().describe("File path inside the repository"),

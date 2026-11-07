@@ -60,7 +60,7 @@ function runFields(run: WorkflowRunResponse) {
 export const workflowsTool = defineTool({
   name: "github_workflows",
   title: "GitHub workflows",
-  description: "List GitHub Actions workflows in a repository, including disabled and legacy workflows.",
+  description: "List GitHub Actions workflows in a repository, including disabled and legacy workflows. Returns {total_count, items[{id, name, path, state}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
@@ -102,7 +102,7 @@ export const workflowRunsTool = defineTool({
   name: "github_workflow_runs",
   title: "GitHub workflow runs",
   description:
-    "List workflow runs for a repository or one workflow, optionally filtered by branch, status, and event.",
+    "List workflow runs for a repository or one workflow, optionally filtered by branch, status, and event. Returns {total_count, items[{id, name, workflow_id, run_number, event, status, conclusion, branch, sha, created_at, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     workflow_id: z.number().int().positive().optional().describe("Workflow id or numeric workflow file id"),
@@ -149,7 +149,7 @@ export const workflowRunTool = defineTool({
   name: "github_workflow_run",
   title: "GitHub workflow run",
   description:
-    "Read one workflow run. Set include_jobs=true to fetch up to 100 jobs with their step statuses and conclusions.",
+    "Read one workflow run. Set include_jobs=true to fetch up to 100 jobs with their step statuses and conclusions. Returns run fields {id, name, workflow_id, run_number, event, status, conclusion, branch, sha, created_at, updated_at, html_url}; adds {jobs[{id, name, status, conclusion, started_at, completed_at, steps[{number, name, status, conclusion}]}], jobs_truncated} when include_jobs is true.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     run_id: z.number().int().positive().describe("Workflow run id"),

@@ -52,7 +52,7 @@ export const issueTool = defineTool({
   name: "github_issue",
   title: "GitHub issue",
   description:
-    "Read one issue, or pull request, with labels and assignees. Set include_comments=true to fetch the latest comments in chronological order; comment_limit caps how many (default 20) and max_comment_chars truncates each body.",
+    "Read one issue, or pull request, with labels and assignees. Set include_comments=true to fetch the latest comments in chronological order; comment_limit caps how many (default 20) and max_comment_chars truncates each body. Returns issue fields {number, title, state, author, labels, assignees, body, created_at, updated_at, closed_at, comments_count, html_url}; adds {comments[{author, body, created_at}], comments_truncated} when include_comments is true.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     number: z.number().int().positive().describe("Issue or pull request number"),
@@ -127,7 +127,7 @@ export const issuesTool = defineTool({
   name: "github_issues",
   title: "GitHub issues",
   description:
-    'List issues in a repository with state, label, sort, and direction filters. Defaults to issues only; set type to "all" to include pull requests or "pr" for pull requests alone. For aggregate counts over a time window, use github_repo_health instead of paging.',
+    'List issues in a repository with state, label, sort, and direction filters. Defaults to issues only; set type to "all" to include pull requests or "pr" for pull requests alone. For aggregate counts over a time window, use github_repo_health instead of paging. Returns {items[{number, title, state, type, author, labels, created_at, updated_at, html_url, comments_count}], page, per_page, has_more, next_page}.',
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     type: z.enum(["issue", "pr", "all"]).optional().describe("Item kind, default issue"),

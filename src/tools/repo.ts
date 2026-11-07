@@ -26,7 +26,7 @@ export const repoTool = defineTool({
   name: "github_repo",
   title: "GitHub repository",
   description:
-    "Read repository metadata: description, visibility, default branch, stars, forks, open issues, language, license, topics, and timestamps. open_issues includes pull requests.",
+    "Read repository metadata: description, visibility, default branch, stars, forks, open issues, language, license, topics, and timestamps. open_issues includes pull requests. Returns {full_name, description, private, visibility, html_url, default_branch, stars, forks, open_issues, language, license, topics, has_issues, has_discussions, archived, pushed_at, created_at}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),

@@ -45,7 +45,7 @@ export const searchReposTool = defineTool({
   name: "github_search_repos",
   title: "GitHub repository search",
   description:
-    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see.",
+    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see. Returns {total_count, incomplete_results, filtered_count, items[{full_name, description, private, visibility, stars, forks, language, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub repository search query"),
     sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field"),
@@ -109,7 +109,7 @@ export const searchCodeTool = defineTool({
   name: "github_search_code",
   title: "GitHub code search",
   description:
-    "Search code across GitHub. Requires a token; GitHub allows this endpoint only 10 requests/minute and caps results at 1000.",
+    "Search code across GitHub. Requires a token; GitHub allows this endpoint only 10 requests/minute and caps results at 1000. Returns {total_count, incomplete_results, items[{repo, path, sha, html_url, text_matches}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub code search query"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
@@ -159,7 +159,7 @@ export const searchIssuesTool = defineTool({
   name: "github_search_issues",
   title: "GitHub issue and pull request search",
   description:
-    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name. For per-repository aggregate counts, use github_repo_health.",
+    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name. For per-repository aggregate counts, use github_repo_health. Returns {total_count, incomplete_results, items[{repo, number, title, state, type, author, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub issue search query"),
     sort: z.enum(["comments", "reactions", "created", "updated"]).optional().describe("Sort field"),

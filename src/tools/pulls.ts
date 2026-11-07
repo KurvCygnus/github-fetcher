@@ -35,7 +35,7 @@ export const prTool = defineTool({
   name: "github_pr",
   title: "GitHub pull request",
   description:
-    "Read one pull request with branches, stats, mergeability, and optional changed files. Set include_files=true to fetch up to 100 files with patches.",
+    "Read one pull request with branches, stats, mergeability, and optional changed files. Set include_files=true to fetch up to 100 files with patches. Returns PR fields {number, title, state, draft, merged, author, base, head, body, additions, deletions, changed_files, mergeable, created_at, updated_at, merged_at, html_url}; adds {files[{filename, status, additions, deletions, changes, patch}], files_truncated} when include_files is true.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     number: z.number().int().positive().describe("Pull request number"),
@@ -95,7 +95,7 @@ export const prTool = defineTool({
 export const prsTool = defineTool({
   name: "github_prs",
   title: "GitHub pull requests",
-  description: "List pull requests with state, base, head, sort, and direction filters.",
+  description: "List pull requests with state, base, head, sort, and direction filters. Returns {items[{number, title, state, draft, author, base, head, updated_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     state: z.enum(["open", "closed", "all"]).optional().describe("Pull request state, default open"),

@@ -24,7 +24,7 @@ export const releaseTool = defineTool({
   name: "github_release",
   title: "GitHub release",
   description:
-    "Read the latest release or the release for a specific tag, including assets and download URLs.",
+    "Read the latest release or the release for a specific tag, including assets and download URLs. Returns {found, tag_name, name, body, prerelease, draft, published_at, html_url, assets[{name, size, download_count, browser_download_url}]}; found is false when no release exists.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     tag: z.string().optional().describe("Release tag; omit for the latest release"),
@@ -88,7 +88,7 @@ export const releasesTool = defineTool({
   name: "github_releases",
   title: "GitHub releases",
   description:
-    "List releases newest first with tag, name, prerelease/draft flags, and dates. Release note bodies are omitted to keep responses small; use github_release for a single release's notes. With include_prereleases=false the page is filtered client-side, so has_more reflects the unfiltered Link header.",
+    "List releases newest first with tag, name, prerelease/draft flags, and dates. Release note bodies are omitted to keep responses small; use github_release for a single release's notes. With include_prereleases=false the page is filtered client-side, so has_more reflects the unfiltered Link header. Returns {items[{tag_name, name, prerelease, draft, published_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),

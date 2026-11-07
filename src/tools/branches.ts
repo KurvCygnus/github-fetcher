@@ -12,7 +12,7 @@ interface BranchResponse {
 export const branchesTool = defineTool({
   name: "github_branches",
   title: "GitHub branches",
-  description: "List branches with their head sha and protection state.",
+  description: "List branches with their head sha and protection state. Returns {items[{name, sha, protected}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),

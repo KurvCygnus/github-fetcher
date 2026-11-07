@@ -37,7 +37,7 @@ export const capabilitiesTool = defineTool({
   name: "github_capabilities",
   title: "GitHub capabilities",
   description:
-    "Task-grouped index of every tool in this server. Call this first when unsure which tool fits a job; costs nothing.",
+    "Task-grouped index of every tool in this server. Call this first when unsure which tool fits a job; costs nothing. Returns {total, groups[{group, tools[{name, summary, signature}]}]}.",
   inputSchema: {},
   annotations: {
     readOnlyHint: true,

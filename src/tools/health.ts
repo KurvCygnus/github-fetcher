@@ -35,7 +35,7 @@ export const healthTool = defineTool({
   name: "github_repo_health",
   title: "GitHub repository health",
   description:
-    "One-call repository snapshot: stars, true open issue and PR counts, has_issues/has_discussions, window opened/closed counts and per-label open counts (search-backed), and the latest release. Window terms: opened_total = issues created inside the window (any current state); opened_still_open = the subset still open; closed = issues closed inside the window (any creation date). Costs about 10 upstream calls, 9 of them search (within the 30 requests/minute search quota). open_issues here counts issues only; github_repo.open_issues includes pull requests.",
+    "One-call repository snapshot: stars, true open issue and PR counts, has_issues/has_discussions, window opened/closed counts and per-label open counts (search-backed), and the latest release. Window terms: opened_total = issues created inside the window (any current state); opened_still_open = the subset still open; closed = issues closed inside the window (any creation date). Costs about 10 upstream calls, 9 of them search (within the 30 requests/minute search quota). open_issues here counts issues only; github_repo.open_issues includes pull requests. Returns {repo, window_days, generated_at, stars, forks, license, default_branch, pushed_at, created_at, has_issues, has_discussions, open_issues, open_prs, open_issues_and_prs, window{opened_total, opened_still_open, closed, labels}, search_unavailable, latest_release}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     window_days: z.number().int().min(1).max(365).optional().describe("Analysis window in days, default 30"),

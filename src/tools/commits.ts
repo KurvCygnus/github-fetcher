@@ -17,7 +17,7 @@ export const commitsTool = defineTool({
   name: "github_commits",
   title: "GitHub commits",
   description:
-    "List commits on a ref, optionally filtered by path, author, or date range. Returns short sha, message, author, and date.",
+    "List commits on a ref, optionally filtered by path, author, or date range. Returns short sha, message, author, and date. Returns {items[{sha, short_sha, message, author{name, email, login}, date, url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),

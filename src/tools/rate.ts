@@ -21,7 +21,7 @@ export const rateLimitTool = defineTool({
   name: "github_rate_limit",
   title: "GitHub rate limit",
   description:
-    "Report the authenticated or anonymous GitHub API quota and reset times. Set resource to project a single bucket such as core or search. Call this first when a request is refused with 403 or 429.",
+    "Report the authenticated or anonymous GitHub API quota and reset times. Set resource to project a single bucket such as core or search. Call this first when a request is refused with 403 or 429. Returns {auth, resources keyed by bucket with {limit, remaining, reset, used}}; adds authenticated_as and scopes when the identity opt-in is on.",
   inputSchema: {
     resource: z
       .string()
