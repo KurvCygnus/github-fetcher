@@ -213,7 +213,7 @@ Agents receive the full input schema for every tool via `tools/list`; this is a 
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (throttled breadth comparison of up to 20 repositories in one call)
-- Search: `github_search_repos` (reports `private` and `visibility` per item; `public_only` filters client-side and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required), `github_search_issues`
+- Search: `github_search_repos` (reports `private` and `visibility` per item; `public_only` defaults to `true` — pass `false` to include private items — filters client-side, and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## Troubleshooting

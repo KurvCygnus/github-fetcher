@@ -91,10 +91,22 @@ describe("github_search_repos", () => {
     ],
   };
 
-  it("keeps every item by default and projects visibility", async () => {
+  it("filters private items by default and reports them", async () => {
     const client = clientWith(mixed);
     const output = await searchReposTool.handler(
       { query: "x" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output.total_count).toBe(3);
+    expect(output.filtered_count).toBe(1);
+    const items = output.items as Array<{ full_name: string }>;
+    expect(items.map((item) => item.full_name)).toEqual(["o/public", "o/inner"]);
+  });
+
+  it("keeps every item when public_only is false", async () => {
+    const client = clientWith(mixed);
+    const output = await searchReposTool.handler(
+      { query: "x", public_only: false },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
     expect(output.total_count).toBe(3);
@@ -107,16 +119,13 @@ describe("github_search_repos", () => {
     ]);
   });
 
-  it("drops private items and counts them when public_only is true", async () => {
+  it("filters private items when public_only is true explicitly", async () => {
     const client = clientWith(mixed);
     const output = await searchReposTool.handler(
       { query: "x", public_only: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(output.total_count).toBe(3);
     expect(output.filtered_count).toBe(1);
-    const items = output.items as Array<{ full_name: string }>;
-    expect(items.map((item) => item.full_name)).toEqual(["o/public", "o/inner"]);
   });
 });
 

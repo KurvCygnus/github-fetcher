@@ -213,7 +213,7 @@ Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema, 这里只
 - Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
 - Releases: `github_release`, `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (一次调用对最多 20 个仓库做限速的横向对比)
-- Search: `github_search_repos` (每条结果报告 `private` 和 `visibility`; `public_only` 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`
+- Search: `github_search_repos` (每条结果报告 `private` 和 `visibility`; `public_only` 默认为 `true` — 传 `false` 才包含私有仓库 — 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## 故障排查

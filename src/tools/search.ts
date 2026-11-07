@@ -45,7 +45,7 @@ export const searchReposTool = defineTool({
   name: "github_search_repos",
   title: "GitHub repository search",
   description:
-    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting.",
+    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see.",
   inputSchema: {
     query: z.string().describe("GitHub repository search query"),
     sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field"),
@@ -86,7 +86,11 @@ export const searchReposTool = defineTool({
       updated_at: repo.updated_at,
       html_url: repo.html_url,
     }));
-    const visible = input.public_only === true ? items.filter((repo) => !repo.private) : items;
+    //* Private repositories the token can see enter raw GitHub search results;
+    //* the default view drops them so an agent's report stays public-scoped,
+    //* and public_only: false is the explicit way back to the full view.
+    const publicOnly = input.public_only ?? true;
+    const visible = publicOnly ? items.filter((repo) => !repo.private) : items;
     return {
       ...searchEnvelope(
         visible,
