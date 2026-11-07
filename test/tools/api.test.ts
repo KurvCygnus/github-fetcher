@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { RawApiResult } from "../../src/core/github.js";
 import { apiGetTool } from "../../src/tools/api.js";
 import { makeConfig } from "../helpers.js";
 
@@ -19,7 +20,7 @@ describe("github_api_get", () => {
       { path: "/repos/o/r/readme", query: { ref: "main" } },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.apiRaw).toHaveBeenCalledWith("/repos/o/r/readme?ref=main");
+    expect(client.apiRaw).toHaveBeenCalledWith("/repos/o/r/readme?ref=main", { fresh: undefined });
     expect(output).toEqual({
       status: 200,
       content_type: "application/json; charset=utf-8",
@@ -103,7 +104,7 @@ describe("github_api_get", () => {
       { path: "/search/repositories?q=rust", query: { per_page: 5, fork: true } },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.apiRaw).toHaveBeenCalledWith("/search/repositories?q=rust&per_page=5&fork=true");
+    expect(client.apiRaw).toHaveBeenCalledWith("/search/repositories?q=rust&per_page=5&fork=true", { fresh: undefined });
   });
 
   it("lets explicit query entries override path pairs", async () => {
@@ -112,7 +113,7 @@ describe("github_api_get", () => {
       { path: "/search/issues?q=is:pr", query: { q: "is:issue" } },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.apiRaw).toHaveBeenCalledWith("/search/issues?q=is%3Aissue");
+    expect(client.apiRaw).toHaveBeenCalledWith("/search/issues?q=is%3Aissue", { fresh: undefined });
   });
 
   it("forwards a path query alone and allows an empty query part", async () => {
@@ -121,12 +122,12 @@ describe("github_api_get", () => {
       { path: "/repos/o/r/issues?state=open" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.apiRaw).toHaveBeenCalledWith("/repos/o/r/issues?state=open");
+    expect(client.apiRaw).toHaveBeenCalledWith("/repos/o/r/issues?state=open", { fresh: undefined });
     await apiGetTool.handler(
       { path: "/repos/o/r/issues?" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.apiRaw).toHaveBeenLastCalledWith("/repos/o/r/issues");
+    expect(client.apiRaw).toHaveBeenLastCalledWith("/repos/o/r/issues", { fresh: undefined });
   });
 
   it("rejects a second query separator and GraphQL with a query", async () => {
@@ -138,5 +139,57 @@ describe("github_api_get", () => {
     await expect(apiGetTool.handler({ path: "/graphql?x=1" }, ctx)).rejects.toMatchObject({
       code: "unsupported",
     });
+  });
+
+  it("projects the cache outcome into the envelope", async () => {
+    const body = new TextEncoder().encode(JSON.stringify({ ok: true }));
+    const client = {
+      api: vi.fn(),
+      apiRaw: vi.fn(async (): Promise<RawApiResult> => ({
+        bytes: body,
+        headers: new Headers({ "content-type": "application/json" }),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "hit", ageSeconds: 12 },
+      })),
+      raw: vi.fn(),
+    };
+    const output = await apiGetTool.handler(
+      { path: "/repos/o/r/readme" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toEqual({
+      status: 200,
+      content_type: "application/json",
+      body: { ok: true },
+      truncated: false,
+      cache: "hit",
+      cache_age_seconds: 12,
+    });
+  });
+
+  it("reports a miss without an age key", async () => {
+    const body = new TextEncoder().encode(JSON.stringify({ ok: true }));
+    const client = {
+      api: vi.fn(),
+      apiRaw: vi.fn(async (): Promise<RawApiResult> => ({
+        bytes: body,
+        headers: new Headers({ "content-type": "application/json" }),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+      })),
+      raw: vi.fn(),
+    };
+    const output = await apiGetTool.handler(
+      { path: "/repos/o/r/readme", fresh: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ cache: "miss" });
+    expect(output).not.toHaveProperty("cache_age_seconds");
+    expect(client.apiRaw).toHaveBeenCalledWith(
+      expect.any(String),
+      { fresh: true },
+    );
   });
 });

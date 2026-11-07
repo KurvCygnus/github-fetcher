@@ -154,7 +154,7 @@ describe("runCli", () => {
       stderr: err.stdout,
     });
     expect(code).toBe(0);
-    expect(apiCtx.client.apiRaw).toHaveBeenCalledWith("/repos/o/r/readme?ref=main&per_page=1");
+    expect(apiCtx.client.apiRaw).toHaveBeenCalledWith("/repos/o/r/readme?ref=main&per_page=1", { fresh: undefined });
     expect(JSON.parse(out.text())).toMatchObject({ status: 200, body: { ok: true } });
   });
 });

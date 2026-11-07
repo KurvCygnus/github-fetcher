@@ -120,7 +120,9 @@ describe("GithubClient", () => {
 
   it("serves fresh entries from the cache until the TTL expires", async () => {
     const { client, get, clock } = harness();
-    get.mockResolvedValue(httpResponse(200, JSON.stringify({ n: 1 }), { etag: '"v1"' }));
+    get.mockResolvedValue(
+      httpResponse(200, JSON.stringify({ n: 1 }), { "content-type": "application/json", etag: '"v1"' }),
+    );
     await client.api("/repos/a/b", { cacheTtlMs: 60_000 });
     const withinTtl = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
     expect(withinTtl.data).toEqual({ n: 1 });
@@ -134,7 +136,7 @@ describe("GithubClient", () => {
   it("revalidates with if-none-match and replays the cached body on 304", async () => {
     const { client, get, clock } = harness();
     get.mockResolvedValueOnce(
-      httpResponse(200, JSON.stringify({ n: 1 }), { etag: '"v1"' }),
+      httpResponse(200, JSON.stringify({ n: 1 }), { "content-type": "application/json", etag: '"v1"' }),
     );
     const first = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
     expect(first.data).toEqual({ n: 1 });
@@ -147,5 +149,66 @@ describe("GithubClient", () => {
     expect(get).toHaveBeenCalledTimes(2);
     const secondOptions = get.mock.calls[1]![1];
     expect(secondOptions?.headers?.["if-none-match"]).toBe('"v1"');
+  });
+
+  it("caches apiRaw JSON responses and reports hit with age", async () => {
+    const { client, get, clock } = harness();
+    get.mockResolvedValue(
+      httpResponse(200, JSON.stringify({ ok: true }), {
+        "content-type": "application/json",
+        etag: '"v1"',
+      }),
+    );
+    await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    const hit = await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(hit.cache).toEqual({ state: "hit", ageSeconds: 0 });
+    expect(new TextDecoder().decode(hit.bytes)).toBe(JSON.stringify({ ok: true }));
+
+    clock.now += 5_000;
+    const aged = await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(aged.cache).toEqual({ state: "hit", ageSeconds: 5 });
+  });
+
+  it("revalidates a stale apiRaw entry and reports revalidated", async () => {
+    const { client, get, clock } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json", etag: '"v1"' }),
+    );
+    await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    clock.now += 61_000;
+    get.mockResolvedValueOnce(httpResponse(304, ""));
+    const result = await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(result.cache).toEqual({ state: "revalidated", ageSeconds: 0 });
+    expect(result.status).toBe(200);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("bypasses the cache for non-text content types", async () => {
+    const { client, get } = harness();
+    const binary = new Uint8Array([0, 1, 2, 3]);
+    get.mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "content-type": "application/octet-stream" }),
+      body: binary,
+      url: "https://api.github.com/repos/a/b",
+    });
+    const first = await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    const second = await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(first.cache).toEqual({ state: "miss" });
+    expect(second.cache).toEqual({ state: "miss" });
+    expect(second.bytes).toEqual(binary);
+  });
+
+  it("honors fresh on apiRaw and reports miss", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValue(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    await client.apiRaw("/repos/a/b", { cacheTtlMs: 60_000 });
+    const fresh = await client.apiRaw("/repos/a/b", { fresh: true, cacheTtlMs: 60_000 });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(fresh.cache).toEqual({ state: "miss" });
   });
 });

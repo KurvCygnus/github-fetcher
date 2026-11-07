@@ -13,11 +13,23 @@ export interface ApiOptions {
   headers?: Record<string, string> | undefined;
 }
 
+export interface CacheOutcome {
+  state: "hit" | "revalidated" | "miss";
+  ageSeconds?: number | undefined;
+}
+
+const encoder = new TextEncoder();
+
+function isCacheableContentType(contentType: string): boolean {
+  return contentType.includes("json") || contentType.startsWith("text/");
+}
+
 export interface ApiResult<T> {
   data: T;
   headers: Headers;
   status: number;
   contentType: string;
+  cache?: CacheOutcome | undefined;
 }
 
 export interface RawApiResult {
@@ -25,11 +37,12 @@ export interface RawApiResult {
   headers: Headers;
   status: number;
   contentType: string;
+  cache?: CacheOutcome | undefined;
 }
 
 export interface GitHubApi {
   api<T>(path: string, options?: ApiOptions): Promise<ApiResult<T>>;
-  apiRaw(path: string): Promise<RawApiResult>;
+  apiRaw(path: string, options?: { fresh?: boolean | undefined; cacheTtlMs?: number | undefined }): Promise<RawApiResult>;
   raw(url: string): Promise<Uint8Array>;
 }
 
@@ -83,15 +96,20 @@ export class GithubClient implements GitHubApi {
     }
   }
 
-  async apiRaw(path: string): Promise<RawApiResult> {
+  async apiRaw(path: string, options: { fresh?: boolean | undefined; cacheTtlMs?: number | undefined } = {}): Promise<RawApiResult> {
     validateApiPath(path);
     const url = `https://api.github.com${path}`;
-    const response = await this.options.http.get(url, { accept: "application/vnd.github+json" });
+    const result = await this.fetchCached(url, {
+      accept: "application/vnd.github+json",
+      fresh: options.fresh,
+      cacheTtlMs: options.cacheTtlMs,
+    });
     return {
-      bytes: response.body,
-      headers: response.headers,
-      status: response.status,
-      contentType: response.headers.get("content-type") ?? "application/octet-stream",
+      bytes: result.bytes,
+      headers: result.headers,
+      status: result.status,
+      contentType: result.contentType,
+      cache: result.cache,
     };
   }
 
@@ -107,7 +125,9 @@ export class GithubClient implements GitHubApi {
     return response.body;
   }
 
-  private async fetchCached(url: string, options: ApiOptions) {
+  //? Explicit result type: an inferred return type widens the state literals to
+  //? string, which breaks CacheOutcome assignability in api()/apiRaw() downstream.
+  private async fetchCached(url: string, options: ApiOptions): Promise<{ text: string; bytes: Uint8Array; status: number; contentType: string; headers: Headers; cache: CacheOutcome }> {
     const ttl = options.cacheTtlMs ?? DEFAULT_TTL_MS;
     const key = cacheKey(url, this.options.authFingerprint);
     const cached = options.fresh || ttl === 0 ? null : await this.options.cache.get(key);
@@ -115,9 +135,11 @@ export class GithubClient implements GitHubApi {
     if (cached && this.now() - cached.fetched_at < ttl) {
       return {
         text: cached.body,
+        bytes: encoder.encode(cached.body),
         status: cached.status,
         contentType: cached.content_type,
         headers: new Headers(cached.link ? { link: cached.link } : {}),
+        cache: { state: "hit", ageSeconds: Math.floor((this.now() - cached.fetched_at) / 1000) },
       };
     }
 
@@ -139,16 +161,18 @@ export class GithubClient implements GitHubApi {
       await this.options.cache.set(key, cached);
       return {
         text: cached.body,
+        bytes: encoder.encode(cached.body),
         status: cached.status,
         contentType: cached.content_type,
         headers: new Headers(cached.link ? { link: cached.link } : {}),
+        cache: { state: "revalidated", ageSeconds: 0 },
       };
     }
 
     const text = new TextDecoder("utf-8").decode(response.body);
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const link = response.headers.get("link");
-    if (ttl > 0 && response.status === 200) {
+    if (ttl > 0 && response.status === 200 && isCacheableContentType(contentType)) {
       await this.options.cache.set(key, {
         version: 1,
         url,
@@ -162,6 +186,13 @@ export class GithubClient implements GitHubApi {
       });
       await this.options.cache.prune();
     }
-    return { text, status: response.status, contentType, headers: response.headers };
+    return {
+      text,
+      bytes: response.body,
+      status: response.status,
+      contentType,
+      headers: response.headers,
+      cache: { state: "miss" },
+    };
   }
 }

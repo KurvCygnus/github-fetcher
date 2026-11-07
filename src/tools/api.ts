@@ -14,6 +14,7 @@ export const apiGetTool = defineTool({
       .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional()
       .describe("Query parameters; entries override pairs already present in path"),
+    fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
     readOnlyHint: true,
@@ -40,7 +41,7 @@ export const apiGetTool = defineTool({
     }
     const queryString = params.toString();
     const url = `${pathPart}${queryString === "" ? "" : `?${queryString}`}`;
-    const response = await ctx.client.apiRaw(url);
+    const response = await ctx.client.apiRaw(url, { fresh: input.fresh });
     const text = new TextDecoder("utf-8").decode(response.bytes);
     const clipped = truncateText(text, ctx.config.maxFileBytes);
     if (clipped.truncated && response.contentType.includes("application/json")) {
@@ -49,6 +50,8 @@ export const apiGetTool = defineTool({
         content_type: response.contentType,
         body: null,
         truncated: true,
+        ...(response.cache ? { cache: response.cache.state } : {}),
+        ...(response.cache?.ageSeconds !== undefined ? { cache_age_seconds: response.cache.ageSeconds } : {}),
         hint: "response exceeded GITHUB_MCP_MAX_FILE_BYTES; narrow the query (e.g. per_page) or raise the limit",
       };
     }
@@ -65,6 +68,8 @@ export const apiGetTool = defineTool({
       content_type: response.contentType,
       body,
       truncated: clipped.truncated,
+      ...(response.cache ? { cache: response.cache.state } : {}),
+      ...(response.cache?.ageSeconds !== undefined ? { cache_age_seconds: response.cache.ageSeconds } : {}),
     };
   },
 });
