@@ -206,7 +206,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_capabilities` 的每行还带从同一 schema 派生的输入行 (名字, 可选性, 说明), 索引与 schema 不会漂移. 分组与 `github_capabilities` 返回的索引一致.
 
-- Meta: `github_capabilities` (每条摘要带关键输入契约, 每个工具带输入签名), `github_rate_limit` (通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; 不支持 GraphQL)
+- Meta: `github_capabilities` (一行摘要带 `Envelope:` 标签, 外加每个工具派生的 `input` 行与输入签名), `github_rate_limit` (通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; 不支持 GraphQL)
 - Repository: `github_repo` (报告 `visibility`), `github_branches`
 - Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间, 以及单次调用的 `max_bytes` 预算)
 - History: `github_commits`
