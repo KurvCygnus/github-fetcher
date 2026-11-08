@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/@kurvcygnus/github-fetcher.svg)](https://www.npmjs.com/package/@kurvcygnus/github-fetcher)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.19-blue)
+[![M8ven Trust](https://m8ven.ai/badge/mcp/kurvcygnus/github-fetcher)](https://m8ven.ai/mcp/kurvcygnus/github-fetcher?s=readme)
 
 AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 22 tools over stdio for reading repositories, files, commits, issues, pull requests, releases, repository health, side-by-side repository comparison, its own capability index, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
 

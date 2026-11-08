@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/@kurvcygnus/github-fetcher.svg)](https://www.npmjs.com/package/@kurvcygnus/github-fetcher)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.19-blue)
+[![M8ven Trust](https://m8ven.ai/badge/mcp/kurvcygnus/github-fetcher)](https://m8ven.ai/mcp/kurvcygnus/github-fetcher?s=readme)
 
 AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 22 个工具, 走 GitHub REST API 读取仓库, 文件, commit, issue, pull request, release, 仓库健康, 仓库横向对比, 自身的工具能力索引, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
 
