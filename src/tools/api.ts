@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
+import { linkFor } from "./pagination.js";
 import { truncateText } from "./util.js";
 
 export const apiGetTool = defineTool({
   name: "github_api_get",
   title: "GitHub API GET",
   description:
-    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported. Returns {status, content_type, body, truncated, cache, cache_age_seconds}.",
+    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported. Returns {status, content_type, body, truncated, pagination, meta?}.",
   inputSchema: {
     path: z.string().describe("Absolute API path, for example /repos/owner/name/readme"),
     query: z
@@ -44,15 +46,25 @@ export const apiGetTool = defineTool({
     const response = await ctx.client.apiRaw(url, { fresh: input.fresh });
     const text = new TextDecoder("utf-8").decode(response.bytes);
     const clipped = truncateText(text, ctx.config.maxFileBytes);
+    const meta = responseMeta(response);
+    //? Both exits share the envelope tail: pagination is always present (all
+    //? four Link rels, null where the header lacks one), and the meta entry is
+    //? spread last so `meta` trails the fixed keys and stays absent entirely
+    //? when the client reported no cache outcome.
     if (clipped.truncated && response.contentType.includes("application/json")) {
       return {
         status: response.status,
         content_type: response.contentType,
         body: null,
         truncated: true,
-        ...(response.cache ? { cache: response.cache.state } : {}),
-        ...(response.cache?.ageSeconds !== undefined ? { cache_age_seconds: response.cache.ageSeconds } : {}),
         hint: "response exceeded GITHUB_MCP_MAX_FILE_BYTES; narrow the query (e.g. per_page) or raise the limit",
+        pagination: {
+          next: linkFor(response.headers, "next"),
+          prev: linkFor(response.headers, "prev"),
+          first: linkFor(response.headers, "first"),
+          last: linkFor(response.headers, "last"),
+        },
+        ...(meta !== undefined ? { meta } : {}),
       };
     }
     let body: unknown = clipped.text;
@@ -68,8 +80,13 @@ export const apiGetTool = defineTool({
       content_type: response.contentType,
       body,
       truncated: clipped.truncated,
-      ...(response.cache ? { cache: response.cache.state } : {}),
-      ...(response.cache?.ageSeconds !== undefined ? { cache_age_seconds: response.cache.ageSeconds } : {}),
+      pagination: {
+        next: linkFor(response.headers, "next"),
+        prev: linkFor(response.headers, "prev"),
+        first: linkFor(response.headers, "first"),
+        last: linkFor(response.headers, "last"),
+      },
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
