@@ -118,7 +118,7 @@ describe("github_capabilities", () => {
     expect(rows.find((tool) => tool.name === "github_capabilities")?.signature).toBe("none");
     expect(rows.find((tool) => tool.name === "github_rate_limit")?.signature).toBe("resource?, all?");
     expect(rows.find((tool) => tool.name === "github_tree")?.signature).toBe(
-      "repo, ref?, path?, recursive?, max_entries?, fresh?",
+      "repo, ref?, path?, recursive?, max_entries?, summary_only?, fresh?",
     );
     expect(rows.find((tool) => tool.name === "github_file")?.signature).toBe(
       "repo, path, ref?, start_line?, end_line?, max_bytes?, fresh?",

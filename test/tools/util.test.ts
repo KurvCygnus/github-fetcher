@@ -25,6 +25,12 @@ describe("truncateText", () => {
     expect(truncateText("中文", 3)).toEqual({ text: "中", truncated: true });
   });
 
+  it("walks back over a 4-byte lead at the clip boundary", () => {
+    //* "a😀" is 5 bytes (a plus a 4-byte emoji); a 2-byte budget lands on the
+    //* emoji's own lead byte, and the whole sequence is dropped, keeping "a".
+    expect(truncateText("a😀", 2)).toEqual({ text: "a", truncated: true });
+  });
+
   it("treats an empty budget as an empty string", () => {
     expect(truncateText("abc", 0)).toEqual({ text: "", truncated: true });
   });

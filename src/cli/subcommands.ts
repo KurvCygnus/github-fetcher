@@ -18,7 +18,7 @@ export const SUBCOMMANDS = {
   capabilities: { tool: "github_capabilities", positional: [], flags: {} },
   rate: { tool: "github_rate_limit", positional: [], flags: { resource: "string", all: "boolean" } },
   repo: { tool: "github_repo", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
-  tree: { tool: "github_tree", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", recursive: "boolean", "max-entries": "number", ...REPO_FRESH } },
+  tree: { tool: "github_tree", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", recursive: "boolean", "max-entries": "number", "summary-only": "boolean", ...REPO_FRESH } },
   file: { tool: "github_file", positional: [{ key: "repo", kind: "string" }, { key: "path", kind: "string" }], flags: { ref: "string", "start-line": "number", "end-line": "number", "max-bytes": "number", ...REPO_FRESH } },
   commits: { tool: "github_commits", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", author: "string", since: "string", until: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   branches: { tool: "github_branches", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },

@@ -31,7 +31,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
   github_repo: { group: "Repository", summary: "Single repository metadata: description, visibility, stars, forks, license, default branch. Envelope: single object", signature: "repo, fresh?" },
   github_branches: { group: "Repository", summary: "Branch list with head sha and protection state. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
-  github_tree: { group: "Files", summary: "File and directory listing at a ref, recursive optional. Envelope: entries[]", signature: "repo, ref?, path?, recursive?, max_entries?, fresh?" },
+  github_tree: { group: "Files", summary: "File and directory listing at a ref, recursive optional. Envelope: entries[]", signature: "repo, ref?, path?, recursive?, max_entries?, summary_only?, fresh?" },
   github_file: { group: "Files", summary: "One file's text at a ref; reports binary files without bytes. Envelope: single object", signature: "repo, path, ref?, start_line?, end_line?, max_bytes?, fresh?" },
   github_commits: { group: "History", summary: "Commit list on a ref: short sha, message, author, and date. Envelope: items[]", signature: "repo, ref?, path?, author?, since?, until?, page?, per_page?, fresh?" },
   github_issue: { group: "Collaboration", summary: "One issue or pull request with labels and assignees. Envelope: single object", signature: "repo, number, include_comments?, comment_limit?, max_comment_chars?, fresh?" },
