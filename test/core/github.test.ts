@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCacheStore } from "../../src/core/cache.js";
+import { cacheKey, createCacheStore } from "../../src/core/cache.js";
 import { GithubClient } from "../../src/core/github.js";
 import type { HttpGetOptions, HttpClient, HttpResponse } from "../../src/core/http.js";
 import { makeConfig } from "../helpers.js";
@@ -35,7 +35,7 @@ function harness() {
     authFingerprint: "test-fingerprint",
     now: () => clock.now,
   });
-  return { client, get, clock };
+  return { client, get, clock, cache };
 }
 
 describe("GithubClient", () => {
@@ -210,5 +210,128 @@ describe("GithubClient", () => {
     const fresh = await client.apiRaw("/repos/a/b", { fresh: true, cacheTtlMs: 60_000 });
     expect(get).toHaveBeenCalledTimes(2);
     expect(fresh.cache).toEqual({ state: "miss" });
+  });
+
+  it("carries quota from the live response headers on a miss", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 1 }), {
+        "content-type": "application/json",
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-remaining": "4990",
+      }),
+    );
+    const miss = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(miss.cache).toEqual({ state: "miss" });
+    expect(miss.quota).toEqual({ resource: "core", remaining: 4990 });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores the quota pair on a miss and reports it from the entry on a hit", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 1 }), {
+        "content-type": "application/json",
+        etag: '"v1"',
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-remaining": "4990",
+      }),
+    );
+    await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    const hit = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(hit.cache).toEqual({ state: "hit", ageSeconds: 0 });
+    expect(hit.quota).toEqual({ resource: "core", remaining: 4990 });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves a hit with quota undefined when the entry was stored without quota fields", async () => {
+    const { client, get, clock, cache } = harness();
+    //* Part 1 wrote entries without quota fields; seeding the store directly
+    //* reproduces such an entry so no cache migration can be smuggled in.
+    const url = "https://api.github.com/repos/a/b";
+    await cache.set(cacheKey(url, "test-fingerprint"), {
+      version: 1,
+      url,
+      etag: null,
+      last_modified: null,
+      link: null,
+      fetched_at: clock.now,
+      status: 200,
+      content_type: "application/json",
+      body: JSON.stringify({ n: 1 }),
+    });
+    const hit = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(hit.data).toEqual({ n: 1 });
+    expect(hit.cache).toEqual({ state: "hit", ageSeconds: 0 });
+    expect(hit.quota).toBeUndefined();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("revalidation refreshes quota from the 304 headers and the refreshed pair is stored", async () => {
+    const { client, get, clock } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 1 }), {
+        "content-type": "application/json",
+        etag: '"v1"',
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-remaining": "4990",
+      }),
+    );
+    await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+
+    clock.now += 61_000;
+    get.mockResolvedValueOnce(
+      httpResponse(304, "", { "x-ratelimit-resource": "core", "x-ratelimit-remaining": "4980" }),
+    );
+    const revalidated = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(revalidated.cache).toEqual({ state: "revalidated", ageSeconds: 0 });
+    expect(revalidated.quota).toEqual({ resource: "core", remaining: 4980 });
+
+    const hit = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(hit.cache).toEqual({ state: "hit", ageSeconds: 0 });
+    expect(hit.quota).toEqual({ resource: "core", remaining: 4980 });
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("revalidation keeps the stored quota when the 304 headers carry none", async () => {
+    const { client, get, clock } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 1 }), {
+        "content-type": "application/json",
+        etag: '"v1"',
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-remaining": "4990",
+      }),
+    );
+    await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+
+    clock.now += 61_000;
+    get.mockResolvedValueOnce(httpResponse(304, ""));
+    const revalidated = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(revalidated.cache).toEqual({ state: "revalidated", ageSeconds: 0 });
+    expect(revalidated.quota).toEqual({ resource: "core", remaining: 4990 });
+  });
+
+  it("omits quota when the remaining header is missing or not a finite number", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 1 }), {
+        "content-type": "application/json",
+        "x-ratelimit-resource": "core",
+      }),
+    );
+    const noRemaining = await client.api<{ n: number }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(noRemaining.quota).toBeUndefined();
+
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ n: 2 }), {
+        "content-type": "application/json",
+        "x-ratelimit-resource": "core",
+        "x-ratelimit-remaining": "not-a-number",
+      }),
+    );
+    const badRemaining = await client.api<{ n: number }>("/repos/a/b", { fresh: true, cacheTtlMs: 60_000 });
+    expect(badRemaining.quota).toBeUndefined();
+    expect(get).toHaveBeenCalledTimes(2);
   });
 });

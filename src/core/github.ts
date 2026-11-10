@@ -1,4 +1,4 @@
-import type { CacheStore } from "./cache.js";
+import type { CacheEntry, CacheStore } from "./cache.js";
 import { cacheKey } from "./cache.js";
 import type { Config } from "./config.js";
 import { GithubError } from "./errors.js";
@@ -18,6 +18,40 @@ export interface CacheOutcome {
   ageSeconds?: number | undefined;
 }
 
+//* One x-ratelimit observation: the bucket the request drew from and how many
+//* requests were left in it at the time of the response. Both values always
+//* travel together; an unusable header pair yields no snapshot at all.
+export interface QuotaSnapshot {
+  resource: string;
+  remaining: number;
+}
+
+//* Quota is reported only when both headers carry usable values: a missing pair
+//* must never surface as remaining 0, which would read as an exhausted bucket.
+//* Number("") is 0, so an empty or whitespace-only remaining is rejected before
+//* the numeric parse instead of slipping through Number.isFinite.
+function readQuota(headers: Headers): QuotaSnapshot | undefined {
+  const resource = headers.get("x-ratelimit-resource");
+  const remaining = headers.get("x-ratelimit-remaining");
+  if (resource === null || resource === "" || remaining === null || remaining.trim() === "") {
+    return undefined;
+  }
+  const parsed = Number(remaining);
+  if (!Number.isFinite(parsed)) return undefined;
+  return { resource, remaining: parsed };
+}
+
+//* Stored pairs come from our own validated writes, but Part 1 entries predate the
+//* quota fields and a disk entry could still carry a broken number, so the pair is
+//* re-checked before it is reported; a partial pair reports as unknown.
+function entryQuota(entry: CacheEntry): QuotaSnapshot | undefined {
+  if (entry.quota_resource === undefined || entry.quota_resource === "" || entry.quota_remaining === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(entry.quota_remaining)) return undefined;
+  return { resource: entry.quota_resource, remaining: entry.quota_remaining };
+}
+
 const encoder = new TextEncoder();
 
 function isCacheableContentType(contentType: string): boolean {
@@ -30,6 +64,7 @@ export interface ApiResult<T> {
   status: number;
   contentType: string;
   cache?: CacheOutcome | undefined;
+  quota?: QuotaSnapshot | undefined;
 }
 
 export interface RawApiResult {
@@ -38,6 +73,7 @@ export interface RawApiResult {
   status: number;
   contentType: string;
   cache?: CacheOutcome | undefined;
+  quota?: QuotaSnapshot | undefined;
 }
 
 export interface GitHubApi {
@@ -110,6 +146,7 @@ export class GithubClient implements GitHubApi {
       status: result.status,
       contentType: result.contentType,
       cache: result.cache,
+      quota: result.quota,
     };
   }
 
@@ -127,12 +164,14 @@ export class GithubClient implements GitHubApi {
 
   //? Explicit result type: an inferred return type widens the state literals to
   //? string, which breaks CacheOutcome assignability in api()/apiRaw() downstream.
-  private async fetchCached(url: string, options: ApiOptions): Promise<{ text: string; bytes: Uint8Array; status: number; contentType: string; headers: Headers; cache: CacheOutcome }> {
+  private async fetchCached(url: string, options: ApiOptions): Promise<{ text: string; bytes: Uint8Array; status: number; contentType: string; headers: Headers; cache: CacheOutcome; quota: QuotaSnapshot | undefined }> {
     const ttl = options.cacheTtlMs ?? DEFAULT_TTL_MS;
     const key = cacheKey(url, this.options.authFingerprint);
     const cached = options.fresh || ttl === 0 ? null : await this.options.cache.get(key);
 
     if (cached && this.now() - cached.fetched_at < ttl) {
+      //* Hits report the stored pair: it describes the fetch that produced the
+      //* body, and the age on the cache outcome conveys how stale it is.
       return {
         text: cached.body,
         bytes: encoder.encode(cached.body),
@@ -140,6 +179,7 @@ export class GithubClient implements GitHubApi {
         contentType: cached.content_type,
         headers: new Headers(cached.link ? { link: cached.link } : {}),
         cache: { state: "hit", ageSeconds: Math.floor((this.now() - cached.fetched_at) / 1000) },
+        quota: entryQuota(cached),
       };
     }
 
@@ -158,6 +198,15 @@ export class GithubClient implements GitHubApi {
       //* Not modified: keep the stored body but slide fetched_at forward so the
       //* freshness window restarts without another full download.
       cached.fetched_at = this.now();
+      //* The 304's own quota headers describe the request that just revalidated
+      //* the body, so they refresh the stored pair when present; otherwise the
+      //* stored pair is kept untouched (Part 1 entries stay quota-less until a
+      //* full refetch).
+      const liveQuota = readQuota(response.headers);
+      if (liveQuota !== undefined) {
+        cached.quota_resource = liveQuota.resource;
+        cached.quota_remaining = liveQuota.remaining;
+      }
       await this.options.cache.set(key, cached);
       return {
         text: cached.body,
@@ -166,12 +215,17 @@ export class GithubClient implements GitHubApi {
         contentType: cached.content_type,
         headers: new Headers(cached.link ? { link: cached.link } : {}),
         cache: { state: "revalidated", ageSeconds: 0 },
+        quota: liveQuota ?? entryQuota(cached),
       };
     }
 
     const text = new TextDecoder("utf-8").decode(response.body);
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const link = response.headers.get("link");
+    //* Misses report the live pair whether or not the body ends up cached (binary
+    //* bypasses and non-200 responses still consumed quota), and the pair is
+    //* stored atomically with the body so hits can replay it.
+    const quota = readQuota(response.headers);
     if (ttl > 0 && response.status === 200 && isCacheableContentType(contentType)) {
       await this.options.cache.set(key, {
         version: 1,
@@ -183,6 +237,7 @@ export class GithubClient implements GitHubApi {
         status: response.status,
         content_type: contentType,
         body: text,
+        ...(quota !== undefined ? { quota_resource: quota.resource, quota_remaining: quota.remaining } : {}),
       });
       await this.options.cache.prune();
     }
@@ -193,6 +248,7 @@ export class GithubClient implements GitHubApi {
       contentType,
       headers: response.headers,
       cache: { state: "miss" },
+      quota,
     };
   }
 }

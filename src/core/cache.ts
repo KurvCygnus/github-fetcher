@@ -13,6 +13,12 @@ export interface CacheEntry {
   status: number;
   content_type: string;
   body: string;
+  //? Quota pair captured from the response that produced the body. Entries written
+  //? before the quota fields existed (v0.3 Part 1 caches) omit them, so optional
+  //? props spell out "undefined" and a missing pair reads as unknown quota — no
+  //? cache migration, and a half pair is never stored.
+  quota_resource?: string | undefined;
+  quota_remaining?: number | undefined;
 }
 
 export interface CacheStore {
