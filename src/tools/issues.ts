@@ -127,7 +127,7 @@ export const issuesTool = defineTool({
   name: "github_issues",
   title: "GitHub issues",
   description:
-    'List issues in a repository with state, label, sort, and direction filters. Defaults to issues only; set type to "all" to include pull requests or "pr" for pull requests alone. For aggregate counts over a time window, use github_repo_health instead of paging. Returns {items[{number, title, state, type, author, labels, created_at, updated_at, html_url, comments_count}], page, per_page, has_more, next_page}.',
+    'List issues in a repository with state, label, sort, direction, and since filters. Defaults to issues only; set type to "all" to include pull requests or "pr" for pull requests alone. For aggregate counts over a time window, use github_repo_health instead of paging. Returns {items[{number, title, state, type, author, labels, created_at, updated_at, html_url, comments_count}], page, per_page, has_more, next_page}.',
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     type: z.enum(["issue", "pr", "all"]).optional().describe("Item kind, default issue"),
@@ -135,6 +135,10 @@ export const issuesTool = defineTool({
     labels: z.string().optional().describe("Comma-separated label names"),
     sort: z.enum(["created", "updated", "comments"]).optional().describe("Sort field: created, updated, or comments"),
     direction: z.enum(["asc", "desc"]).optional().describe("Sort direction: asc or desc"),
+    since: z
+      .string()
+      .optional()
+      .describe("Only issues updated at or after this ISO 8601 time (GitHub semantics)"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
@@ -154,6 +158,7 @@ export const issuesTool = defineTool({
       labels: input.labels,
       sort: input.sort,
       direction: input.direction,
+      since: input.since,
       page,
       per_page: perPage,
     });

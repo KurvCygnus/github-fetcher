@@ -193,6 +193,18 @@ describe("github_issues", () => {
     expect(output).toHaveProperty("items.0.created_at");
   });
 
+  it("passes since through to the list endpoint", async () => {
+    const api = listClient();
+    await issuesTool.handler(
+      { repo: "o/r", since: "2026-11-01T00:00:00Z" },
+      { client: api, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(api.api).toHaveBeenCalledWith(
+      "/repos/o/r/issues?since=2026-11-01T00%3A00%3A00Z&page=1&per_page=20",
+      { fresh: undefined, cacheTtlMs: 120_000 },
+    );
+  });
+
   it("defaults to issues only, filtering PR noise", async () => {
     const api = listClient();
     const output = await issuesTool.handler(

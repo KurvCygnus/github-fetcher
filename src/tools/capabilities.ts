@@ -35,7 +35,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_file: { group: "Files", summary: "One file's text at a ref; reports binary files without bytes. Envelope: single object", signature: "repo, path, ref?, start_line?, end_line?, max_bytes?, fresh?" },
   github_commits: { group: "History", summary: "Commit list on a ref: short sha, message, author, and date. Envelope: items[]", signature: "repo, ref?, path?, author?, since?, until?, page?, per_page?, fresh?" },
   github_issue: { group: "Collaboration", summary: "One issue or pull request with labels and assignees. Envelope: single object", signature: "repo, number, include_comments?, comment_limit?, max_comment_chars?, fresh?" },
-  github_issues: { group: "Collaboration", summary: "Issue list with filters, defaults to issues only. Envelope: items[]", signature: "repo, type?, state?, labels?, sort?, direction?, page?, per_page?, fresh?" },
+  github_issues: { group: "Collaboration", summary: "Issue list with filters, defaults to issues only. Envelope: items[]", signature: "repo, type?, state?, labels?, sort?, direction?, since?, page?, per_page?, fresh?" },
   github_pr: { group: "Collaboration", summary: "One pull request with branches, stats, and mergeability; optional changed files. Envelope: single object", signature: "repo, number, include_files?, fresh?" },
   github_prs: { group: "Collaboration", summary: "Pull request list with state, base, and head filters. Envelope: items[]", signature: "repo, state?, base?, head?, sort?, direction?, page?, per_page?, fresh?" },
   github_release: { group: "Releases", summary: "Latest or tagged release with assets and download URLs; found:false when none. Envelope: single object", signature: "repo, tag?, fresh?" },

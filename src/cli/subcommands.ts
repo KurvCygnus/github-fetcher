@@ -23,7 +23,7 @@ export const SUBCOMMANDS = {
   commits: { tool: "github_commits", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", author: "string", since: "string", until: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   branches: { tool: "github_branches", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   issue: { tool: "github_issue", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-comments": "boolean", "comment-limit": "number", "max-comment-chars": "number", ...REPO_FRESH } },
-  issues: { tool: "github_issues", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", type: "string", labels: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
+  issues: { tool: "github_issues", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", type: "string", labels: "string", sort: "string", direction: "string", since: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   pr: { tool: "github_pr", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-files": "boolean", ...REPO_FRESH } },
   prs: { tool: "github_prs", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", base: "string", head: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   release: { tool: "github_release", positional: [{ key: "repo", kind: "string" }, { key: "tag", kind: "string", required: false }], flags: { ...REPO_FRESH } },
