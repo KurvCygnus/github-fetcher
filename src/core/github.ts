@@ -102,8 +102,22 @@ function validateApiPath(path: string): void {
   }
   const separator = path.indexOf("?");
   const pathPart = separator === -1 ? path : path.slice(0, separator);
-  if (!pathPart.startsWith("/") || pathPart.startsWith("//") || pathPart.includes("..")) {
+  if (!pathPart.startsWith("/") || pathPart.startsWith("//")) {
     throw new GithubError("invalid_params", "path must be an absolute API path without .. or //");
+  }
+  //? Segment-scoped traversal check: fetch normalizes the path with WHATWG URL
+  //* rules, which collapse %2e variants (any case) into real dot segments, so a
+  //* literal ".." scan on the raw text misses them and an encoded segment can
+  //* escape the requested directory. Each segment is lowercased and its %2e
+  //* variants decoded, then compared as a whole: only a segment equal to ..
+  //* escapes, while .. inside a longer segment (my..file.md) is a plain file
+  //* name and passes, which the old whole-string includes("..") check wrongly
+  //* rejected.
+  for (const segment of pathPart.split("/")) {
+    const decoded = segment.toLowerCase().split("%2e").join(".");
+    if (decoded === "..") {
+      throw new GithubError("invalid_params", "path must be an absolute API path without .. or //");
+    }
   }
   if (separator !== -1 && path.slice(separator + 1).includes("?")) {
     throw new GithubError("invalid_params", "path must contain at most one query string separator (?)");

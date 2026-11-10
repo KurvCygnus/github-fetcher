@@ -84,6 +84,31 @@ describe("GithubClient", () => {
     });
   });
 
+  it("rejects percent-encoded dot segments and lets dots inside longer segments pass", async () => {
+    const { client, get } = harness();
+    //? WHATWG URL normalization (what fetch applies) collapses %2e variants into
+    //* real path traversal, so every case form of a dot-only encoded segment must
+    //* be rejected even though the raw text contains no literal "..".
+    for (const path of ["/repos/a/%2e%2e/b", "/repos/a/.%2E/b", "/repos/a/%2e./b"]) {
+      await expect(client.apiRaw(path)).rejects.toMatchObject({ code: "invalid_params" });
+    }
+    expect(get).not.toHaveBeenCalled();
+    //? .. inside a longer segment is a plain file name, not a traversal step, and
+    //* %2e%2ex decodes to ..x which is likewise a longer segment, not "..".
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    const file = await client.apiRaw("/repos/a/contents/my..file.md");
+    expect(file.status).toBe(200);
+    expect(get.mock.calls[0]![0]).toBe("https://api.github.com/repos/a/contents/my..file.md");
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    const dotX = await client.apiRaw("/repos/a/%2e%2ex/b");
+    expect(dotX.status).toBe(200);
+    expect(get.mock.calls[1]![0]).toBe("https://api.github.com/repos/a/%2e%2ex/b");
+  });
+
   it("rejects non-raw hosts in raw with unsupported", async () => {
     const { client, get } = harness();
     await expect(client.raw("https://api.github.com/repos/a/b")).rejects.toMatchObject({
