@@ -34,6 +34,8 @@ export const SUBCOMMANDS = {
   "user-repos": { tool: "github_user_repos", positional: [{ key: "user", kind: "string" }], flags: { type: "string", sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-starred": { tool: "github_user_starred", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-events": { tool: "github_user_events", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
+  contributors: { tool: "github_contributors", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
+  languages: { tool: "github_languages", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   "search-repos": { tool: "github_search_repos", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", "public-only": "boolean", ...REPO_FRESH } },
   "search-code": { tool: "github_search_code", positional: [{ key: "query", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "search-issues": { tool: "github_search_issues", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },

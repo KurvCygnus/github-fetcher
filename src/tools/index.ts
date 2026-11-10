@@ -5,9 +5,11 @@ import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
 import { commitsTool } from "./commits.js";
 import { compareReposTool } from "./compare.js";
+import { contributorsTool } from "./contributors.js";
 import { fileTool } from "./file.js";
 import { healthTool } from "./health.js";
 import { issueTool, issuesTool } from "./issues.js";
+import { languagesTool } from "./languages.js";
 import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
 import { releaseTool, releasesTool } from "./releases.js";
@@ -43,4 +45,6 @@ export const tools: readonly ToolDefinition[] = [
   userReposTool,
   userStarredTool,
   userEventsTool,
+  languagesTool,
+  contributorsTool,
 ];

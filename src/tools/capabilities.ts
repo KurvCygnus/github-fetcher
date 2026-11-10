@@ -31,6 +31,8 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
   github_repo: { group: "Repository", summary: "Single repository metadata: description, visibility, stars, forks, license, default branch. Envelope: single object", signature: "repo, fresh?" },
   github_branches: { group: "Repository", summary: "Branch list with head sha and protection state. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
+  github_languages: { group: "Repository", summary: "Language bytes per language, sorted descending; the byte-accurate alternative to extension counting. Envelope: single object", signature: "repo, fresh?" },
+  github_contributors: { group: "Repository", summary: "Contributor list with login, type, and contribution count; anonymous contributors are excluded. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
   github_user: { group: "User", summary: "One user's profile: name, type, bio, company, location, blog, and follower counts. Envelope: single object", signature: "user" },
   github_user_repos: { group: "User", summary: "A user's public repositories with the house projection: visibility, fork, stars, watchers, language, push time. Envelope: items[]", signature: "user, type?, sort?, order?, page?, per_page?, fresh?" },
   github_user_starred: { group: "User", summary: "Repositories a user starred, with the starred time from the star+json media type. Envelope: items[]", signature: "user, page?, per_page?, fresh?" },
