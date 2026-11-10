@@ -53,7 +53,7 @@ describe("github_search_repos", () => {
   });
 
   const mixed = {
-    total_count: 3,
+    total_count: 4,
     incomplete_results: false,
     items: [
       {
@@ -85,8 +85,21 @@ describe("github_search_repos", () => {
         stargazers_count: 2,
         forks_count: 1,
         language: "TypeScript",
+        topics: ["mcp"],
+        license: { spdx_id: "MIT" },
         updated_at: "2026-11-02T00:00:00Z",
         html_url: "https://github.com/o/inner",
+      },
+      {
+        full_name: "o/plain",
+        description: null,
+        private: false,
+        visibility: "public",
+        stargazers_count: 3,
+        forks_count: 2,
+        language: "Go",
+        updated_at: "2026-11-03T00:00:00Z",
+        html_url: "https://github.com/o/plain",
       },
     ],
   };
@@ -97,10 +110,10 @@ describe("github_search_repos", () => {
       { query: "x" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(output.total_count).toBe(3);
+    expect(output.total_count).toBe(4);
     expect(output.filtered_count).toBe(1);
     const items = output.items as Array<{ full_name: string }>;
-    expect(items.map((item) => item.full_name)).toEqual(["o/public", "o/inner"]);
+    expect(items.map((item) => item.full_name)).toEqual(["o/public", "o/inner", "o/plain"]);
   });
 
   it("keeps every item when public_only is false", async () => {
@@ -109,13 +122,14 @@ describe("github_search_repos", () => {
       { query: "x", public_only: false },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(output.total_count).toBe(3);
+    expect(output.total_count).toBe(4);
     expect(output.filtered_count).toBe(0);
     const items = output.items as Array<{ full_name: string; private: boolean; visibility: string }>;
     expect(items.map((item) => [item.full_name, item.private, item.visibility])).toEqual([
       ["o/public", false, "public"],
       ["o/private", true, "private"],
       ["o/inner", false, "internal"],
+      ["o/plain", false, "public"],
     ]);
   });
 
@@ -126,6 +140,21 @@ describe("github_search_repos", () => {
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
     expect(output.filtered_count).toBe(1);
+  });
+
+  it("carries topics and license in repository items", async () => {
+    const client = clientWith(mixed);
+    const output = await searchReposTool.handler(
+      { query: "x" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const items = output.items as Array<{ full_name: string; topics: string[]; license: string | null }>;
+    const inner = items.find((item) => item.full_name === "o/inner");
+    expect(inner?.topics).toEqual(["mcp"]);
+    expect(inner?.license).toBe("MIT");
+    const plain = items.find((item) => item.full_name === "o/plain");
+    expect(plain?.topics).toEqual([]);
+    expect(plain?.license).toBeNull();
   });
 });
 
