@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "./define.js";
 import { workflowRunTool, workflowRunsTool, workflowsTool } from "./actions.js";
 import { apiGetTool } from "./api.js";
+import { repoActivityTool } from "./activity.js";
 import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
 import { commitsTool } from "./commits.js";
@@ -47,4 +48,5 @@ export const tools: readonly ToolDefinition[] = [
   userEventsTool,
   languagesTool,
   contributorsTool,
+  repoActivityTool,
 ];

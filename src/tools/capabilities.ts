@@ -33,6 +33,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_branches: { group: "Repository", summary: "Branch list with head sha and protection state. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
   github_languages: { group: "Repository", summary: "Language bytes per language, sorted descending; the byte-accurate alternative to extension counting. Envelope: single object", signature: "repo, fresh?" },
   github_contributors: { group: "Repository", summary: "Contributor list with login, type, and contribution count; anonymous contributors are excluded. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
+  github_repo_activity: { group: "Repository", summary: "Window activity from core endpoints only: pull and issue counts, merge-time median, commits, active contributors, releases, with truncation flags. Envelope: single object", signature: "repo, window_days?, fresh?" },
   github_user: { group: "User", summary: "One user's profile: name, type, bio, company, location, blog, and follower counts. Envelope: single object", signature: "user" },
   github_user_repos: { group: "User", summary: "A user's public repositories with the house projection: visibility, fork, stars, watchers, language, push time. Envelope: items[]", signature: "user, type?, sort?, order?, page?, per_page?, fresh?" },
   github_user_starred: { group: "User", summary: "Repositories a user starred, with the starred time from the star+json media type. Envelope: items[]", signature: "user, page?, per_page?, fresh?" },
