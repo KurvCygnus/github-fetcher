@@ -16,7 +16,10 @@ describe("github_release", () => {
           draft: false,
           published_at: "2024-01-01T00:00:00Z",
           html_url: "https://github.com/o/r/releases/tag/v1.0.0",
-          assets: [{ name: "a.zip", size: 10, download_count: 2, browser_download_url: "https://example.com/a.zip" }],
+          assets: [
+            { name: "a.zip", size: 10, download_count: 2, digest: "sha256:abc", browser_download_url: "https://example.com/a.zip" },
+            { name: "b.zip", size: 20, download_count: 5, browser_download_url: "https://example.com/b.zip" },
+          ],
         },
         headers: new Headers(),
         status: 200,
@@ -45,7 +48,10 @@ describe("github_release", () => {
       draft: false,
       published_at: "2024-01-01T00:00:00Z",
       html_url: "https://github.com/o/r/releases/tag/v1.0.0",
-      assets: [{ name: "a.zip", size: 10, download_count: 2, browser_download_url: "https://example.com/a.zip" }],
+      assets: [
+        { name: "a.zip", size: 10, download_count: 2, digest: "sha256:abc", browser_download_url: "https://example.com/a.zip" },
+        { name: "b.zip", size: 20, download_count: 5, digest: null, browser_download_url: "https://example.com/b.zip" },
+      ],
     });
   });
 

@@ -16,6 +16,7 @@ interface ReleaseResponse {
     name: string;
     size: number;
     download_count: number;
+    digest?: string;
     browser_download_url: string;
   }[];
 }
@@ -24,7 +25,7 @@ export const releaseTool = defineTool({
   name: "github_release",
   title: "GitHub release",
   description:
-    "Read the latest release or the release for a specific tag, including assets and download URLs. Returns {found, tag_name, name, body, prerelease, draft, published_at, html_url, assets[{name, size, download_count, browser_download_url}]}; found is false when no release exists.",
+    "Read the latest release or the release for a specific tag, including assets and download URLs. Returns {found, tag_name, name, body, prerelease, draft, published_at, html_url, assets[{name, size, download_count, digest, browser_download_url}]}; found is false when no release exists.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     tag: z.string().optional().describe("Release tag; omit for the latest release"),
@@ -78,6 +79,7 @@ export const releaseTool = defineTool({
         name: asset.name,
         size: asset.size,
         download_count: asset.download_count,
+        digest: asset.digest ?? null,
         browser_download_url: asset.browser_download_url,
       })),
     };
