@@ -21,12 +21,16 @@ export const rateLimitTool = defineTool({
   name: "github_rate_limit",
   title: "GitHub rate limit",
   description:
-    "Report the authenticated or anonymous GitHub API quota and reset times. Set resource to project a single bucket such as core or search. Call this first when a request is refused with 403 or 429. Returns {auth, resources keyed by bucket with {limit, remaining, reset, used}}; adds authenticated_as and scopes when the identity opt-in is on.",
+    "Report the authenticated or anonymous GitHub API quota and reset times. Set resource to project a single bucket such as core or search. Call this first when a request is refused with 403 or 429. Returns {auth, resources keyed by bucket with {limit, remaining, reset, used}}; defaults to core and search; pass all: true for every bucket; adds authenticated_as and scopes when the identity opt-in is on.",
   inputSchema: {
     resource: z
       .string()
       .optional()
       .describe("Limit the projection to one resource bucket, e.g. core or search; omit for all buckets"),
+    all: z
+      .boolean()
+      .optional()
+      .describe("Return every quota bucket; the default projects core and search only"),
   },
   annotations: {
     readOnlyHint: true,
@@ -49,9 +53,15 @@ export const rateLimitTool = defineTool({
     );
     //* Unknown buckets project to an empty object because GitHub omits keys it
     //* does not report; callers can tell a missing bucket from an empty quota.
+    //* The default keeps the two buckets callers budget against (core, search);
+    //* all: true restores every bucket, and an explicit resource wins over both.
     const resources =
       input.resource === undefined
-        ? projection
+        ? Object.fromEntries(
+            Object.entries(projection).filter(
+              ([name]) => input.all === true || name === "core" || name === "search",
+            ),
+          )
         : Object.fromEntries(
             Object.entries(projection).filter(([name]) => name === input.resource),
           );

@@ -7,8 +7,13 @@ const fixture = {
   resources: {
     core: { limit: 5000, remaining: 4999, reset: 1_700_000_600, used: 1 },
     search: { limit: 30, remaining: 30, reset: 1_700_000_060, used: 0 },
+    graphql: { limit: 50, remaining: 50, reset: 1_700_000_050, used: 0 },
   },
 };
+
+//* graphql is a third bucket GitHub really reports; it exists in the fixture to
+//* prove the default projection trims it and that only all: true or an explicit
+//* resource brings it back.
 
 describe("github_rate_limit", () => {
   it("projects quota without leaking identity", async () => {
@@ -37,6 +42,49 @@ describe("github_rate_limit", () => {
       { client, config: makeConfig(), authFingerprint: "anonymous" },
     );
     expect(result).toMatchObject({ auth: "anonymous" });
+  });
+
+  it("trims the default projection to the core and search buckets", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      {},
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(Object.keys((output as { resources: Record<string, unknown> }).resources)).toEqual(["core", "search"]);
+  });
+
+  it("returns every bucket when all is true", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      { all: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toEqual({
+      auth: "token",
+      resources: {
+        core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
+        search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
+        graphql: { limit: 50, remaining: 50, reset: "2023-11-14T22:14:10.000Z", used: 0 },
+      },
+    });
+  });
+
+  it("returns only graphql when resource alone names it", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      { resource: "graphql" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(Object.keys((output as { resources: Record<string, unknown> }).resources)).toEqual(["graphql"]);
+  });
+
+  it("prefers resource over all when both are given", async () => {
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      { resource: "graphql", all: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(Object.keys((output as { resources: Record<string, unknown> }).resources)).toEqual(["graphql"]);
   });
 
   it("filters resources when resource is given", async () => {
