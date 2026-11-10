@@ -14,6 +14,7 @@ import { releaseTool, releasesTool } from "./releases.js";
 import { repoTool } from "./repo.js";
 import { searchCodeTool, searchIssuesTool, searchReposTool } from "./search.js";
 import { treeTool } from "./tree.js";
+import { userEventsTool, userReposTool, userStarredTool, userTool } from "./user.js";
 
 export const tools: readonly ToolDefinition[] = [
   rateLimitTool,
@@ -38,4 +39,8 @@ export const tools: readonly ToolDefinition[] = [
   healthTool,
   capabilitiesTool,
   compareReposTool,
+  userTool,
+  userReposTool,
+  userStarredTool,
+  userEventsTool,
 ];

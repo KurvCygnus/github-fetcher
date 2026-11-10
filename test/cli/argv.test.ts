@@ -75,8 +75,8 @@ describe("parseArgs", () => {
     expect(() => parseArgs(SUBCOMMANDS["compare-repos"], [])).toThrow(CliUsageError);
   });
 
-  it("covers all twenty-two tools", () => {
-    expect(Object.keys(SUBCOMMANDS)).toHaveLength(22);
+  it("covers all registered tools", () => {
+    expect(Object.keys(SUBCOMMANDS)).toHaveLength(tools.length);
   });
 
   it("parses the 0.2.1 parameters", () => {

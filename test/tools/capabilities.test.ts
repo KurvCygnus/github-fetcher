@@ -52,7 +52,7 @@ describe("CAPABILITY_GROUPS", () => {
     ]);
     const capabilities = rows.find((tool) => tool.name === "github_capabilities")!;
     expect(capabilities.input).toEqual([]);
-    expect(rows).toHaveLength(22);
+    expect(rows).toHaveLength(allTools.length);
   });
 
   it("slims every summary to one line with its envelope tag", () => {
@@ -99,12 +99,12 @@ describe("github_capabilities", () => {
       config: makeConfig(),
       authFingerprint: "abc",
     });
-    expect(output.total).toBe(22);
+    expect(output.total).toBe(allTools.length);
     expect(Array.isArray(output.groups)).toBe(true);
     const snapshot = output.groups as Array<{ group: string; tools: { name: string; summary: string }[] }>;
     const names = snapshot.flatMap((group) => group.tools.map((tool) => tool.name));
-    expect(names).toHaveLength(22);
-    expect(new Set(names).size).toBe(22);
+    expect(names).toHaveLength(allTools.length);
+    expect(new Set(names).size).toBe(allTools.length);
   });
 
   it("returns signatures in the tool rows", async () => {
