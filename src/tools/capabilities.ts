@@ -29,6 +29,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_capabilities: { group: "Meta", summary: "Task-grouped index of every tool; call this first when unsure which tool fits a job. Envelope: single object", signature: "none" },
   github_rate_limit: { group: "Meta", summary: "Current quota per resource with reset times; call it when refused with 403/429. Envelope: single object", signature: "resource?, all?" },
   github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
+  github_doctor: { group: "Meta", summary: "One-screen health check: token presence, opt-in identity, proxy reachability, cache state, and quota; call it first when calls fail unexpectedly. Envelope: single object", signature: "none" },
   github_repo: { group: "Repository", summary: "Single repository metadata: description, visibility, stars, forks, license, default branch. Envelope: single object", signature: "repo, fresh?" },
   github_repos: { group: "Repository", summary: "Concurrent batch lookup of up to 20 repositories; per-item ok/error so one missing repo never rejects the call. Envelope: single object", signature: "repos, fresh?" },
   github_compare_refs: { group: "Repository", summary: "Two-ref comparison: ahead/behind, total commits, and up to 100 changed files with patches capped at 4000 characters. Envelope: single object", signature: "repo, base, head, fresh?" },

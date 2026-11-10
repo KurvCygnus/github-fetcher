@@ -46,6 +46,7 @@ export const SUBCOMMANDS = {
   "workflow-runs": { tool: "github_workflow_runs", positional: [{ key: "repo", kind: "string" }], flags: { "workflow-id": "number", branch: "string", status: "string", event: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   "workflow-run": { tool: "github_workflow_run", positional: [{ key: "repo", kind: "string" }, { key: "run_id", kind: "number" }], flags: { "include-jobs": "boolean", ...REPO_FRESH } },
   api: { tool: "github_api_get", positional: [{ key: "path", kind: "string" }], flags: { query: "string-array", fresh: "boolean" } },
+  doctor: { tool: "github_doctor", positional: [], flags: {} },
 } satisfies Record<string, SubcommandSpec>;
 
 //? noUncheckedIndexedAccess types every Record<string, _> read as possibly undefined, and
