@@ -27,7 +27,7 @@ export function capabilityInputs(shape: z.ZodRawShape): CapabilityInput[] {
 //* fails when a tool is added without a row here, keeping capabilities complete.
 export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_capabilities: { group: "Meta", summary: "Task-grouped index of every tool; call this first when unsure which tool fits a job. Envelope: single object", signature: "none" },
-  github_rate_limit: { group: "Meta", summary: "Current quota per resource with reset times; call it when refused with 403/429. Envelope: single object", signature: "resource?" },
+  github_rate_limit: { group: "Meta", summary: "Current quota per resource with reset times; call it when refused with 403/429. Envelope: single object", signature: "resource?, all?" },
   github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
   github_repo: { group: "Repository", summary: "Single repository metadata: description, visibility, stars, forks, license, default branch. Envelope: single object", signature: "repo, fresh?" },
   github_branches: { group: "Repository", summary: "Branch list with head sha and protection state. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },

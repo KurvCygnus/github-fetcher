@@ -42,7 +42,12 @@ describe("CAPABILITY_GROUPS", () => {
       {
         name: "resource",
         optional: true,
-        description: "Limit the projection to one resource bucket, e.g. core or search; omit for all buckets",
+        description: "Limit the projection to one resource bucket, e.g. core or search",
+      },
+      {
+        name: "all",
+        optional: true,
+        description: "Return every quota bucket; the default projects core and search only",
       },
     ]);
     const capabilities = rows.find((tool) => tool.name === "github_capabilities")!;
@@ -111,7 +116,7 @@ describe("github_capabilities", () => {
     const snapshot = output.groups as Array<{ group: string; tools: Array<{ name: string; signature: string }> }>;
     const rows = snapshot.flatMap((group) => group.tools);
     expect(rows.find((tool) => tool.name === "github_capabilities")?.signature).toBe("none");
-    expect(rows.find((tool) => tool.name === "github_rate_limit")?.signature).toBe("resource?");
+    expect(rows.find((tool) => tool.name === "github_rate_limit")?.signature).toBe("resource?, all?");
     expect(rows.find((tool) => tool.name === "github_tree")?.signature).toBe(
       "repo, ref?, path?, recursive?, max_entries?, fresh?",
     );
