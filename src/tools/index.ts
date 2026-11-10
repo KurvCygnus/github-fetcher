@@ -6,6 +6,7 @@ import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
 import { commitsTool } from "./commits.js";
 import { compareReposTool } from "./compare.js";
+import { compareRefsTool } from "./compare-refs.js";
 import { contributorsTool } from "./contributors.js";
 import { fileTool } from "./file.js";
 import { healthTool } from "./health.js";
@@ -15,6 +16,7 @@ import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
 import { releaseTool, releasesTool } from "./releases.js";
 import { repoTool } from "./repo.js";
+import { reposBatchTool } from "./repos-batch.js";
 import { searchCodeTool, searchIssuesTool, searchReposTool } from "./search.js";
 import { treeTool } from "./tree.js";
 import { userEventsTool, userReposTool, userStarredTool, userTool } from "./user.js";
@@ -49,4 +51,6 @@ export const tools: readonly ToolDefinition[] = [
   languagesTool,
   contributorsTool,
   repoActivityTool,
+  reposBatchTool,
+  compareRefsTool,
 ];
