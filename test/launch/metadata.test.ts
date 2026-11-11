@@ -45,7 +45,7 @@ describe("package metadata", () => {
   it("describes the narrow, read-only positioning", () => {
     expect(pkg.description).toContain("Read-only GitHub MCP server");
     expect(pkg.description).toContain("unreliable networks");
-    expect(pkg.description).toContain("22 tools");
+    expect(pkg.description).toContain("32 tools");
   });
 
   it("ships the intended files only", () => {

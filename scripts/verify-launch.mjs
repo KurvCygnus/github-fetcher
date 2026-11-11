@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 const PACKAGE_NAME = "@kurvcygnus/github-fetcher";
 const VERSION = "0.2.1";
-const TOOL_COUNT = 22;
+const TOOL_COUNT = 32;
 const INSTALL = "npx -y @kurvcygnus/github-fetcher@latest";
 
 const EN_HEADINGS = [
@@ -74,7 +74,7 @@ export async function verifyLaunch({ root = process.cwd(), offline = true } = {}
   for (const [name, text] of [["README.md", en], ["README.zh-CN.md", zh]]) {
     const tools = new Set([...text.matchAll(/\bgithub_[a-z0-9_]+\b/g)].map((match) => match[0]));
     if (tools.size !== TOOL_COUNT) errors.push(`${name} lists ${tools.size} tools, expected ${TOOL_COUNT}`);
-    if (/\b(?!22\b)\d+\s+tools?\b/.test(text) || /\b(?!22\b)\d+\s*个工具/.test(text)) {
+    if (/\b(?!32\b)\d+\s+tools?\b/.test(text) || /\b(?!32\b)\d+\s*个工具/.test(text)) {
       errors.push(`${name} has stale tool count`);
     }
     for (const marker of ["TODO", "TBD", "FIXME", "example.com"]) {
