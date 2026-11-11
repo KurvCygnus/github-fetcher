@@ -16,7 +16,7 @@ npm run smoke
 npm run verify:launch
 ```
 
-`npm run smoke` starts the built server over stdio and asserts 22 tools. `npm run verify:launch` checks metadata and documentation consistency offline; add `-- --online` to check the public links.
+`npm run smoke` starts the built server over stdio and asserts 32 tools. `npm run verify:launch` checks metadata and documentation consistency offline; add `-- --online` to check the public links.
 
 ## Development rules
 

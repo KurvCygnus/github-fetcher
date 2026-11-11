@@ -7,7 +7,7 @@
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.19-blue)
 [![M8ven Trust](https://m8ven.ai/badge/mcp/kurvcygnus/github-fetcher)](https://m8ven.ai/mcp/kurvcygnus/github-fetcher?s=readme)
 
-AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 22 个工具, 走 GitHub REST API 读取仓库, 文件, commit, issue, pull request, release, 仓库健康, 仓库横向对比, 自身的工具能力索引, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
+AI 编码 agent 的日常工作几乎全在读 GitHub, 而直连 GitHub 的读取路径既不安全也不省钱, 更谈不上可靠. `@kurvcygnus/github-fetcher` 是一个只读的 GitHub MCP server: 它通过 stdio 暴露 32 个工具, 走 GitHub REST API 读取仓库, 用户, 文件, commit, issue, pull request, release, 仓库健康与活跃度, 仓库与 ref 横向对比, 自身的工具能力索引与自检, Actions 和搜索结果. 它复用你已有的凭据, 能绕开不可靠的网络, 把响应缓存到磁盘, 并且无法修改任何东西.
 
 ## 为中国大陆网络而构建
 
@@ -32,7 +32,7 @@ Agent 访问 GitHub 的频率极高 (读目录树, 读文件, 查 issue, 查 pul
 
 ## 你能得到什么
 
-- 通过 stdio 暴露的 22 个只读 MCP 工具: 仓库, 目录树, 文件, commit, 分支, issue, pull request, release, 仓库健康, 仓库横向对比, 工具能力索引, 搜索, Actions 运行记录, 以及一个通用的只读 GET 兜底工具.
+- 通过 stdio 暴露的 32 个只读 MCP 工具: 仓库, 用户, 目录树, 文件, commit, 分支, issue, pull request, release, 仓库健康与活跃度, 仓库与 ref 横向对比, 用户主页, star 记录和公开事件, 工具能力索引与自检, 搜索, Actions 运行记录, 以及一个通用的只读 GET 兜底工具.
 - 复用 git credential store 里的 token: 服务器读取你的 git credential helper 已保存的凭据 (例如 GitHub CLI 或 Git Credential Manager), 不会在磁盘上新增秘密. `GITHUB_TOKEN` 优先; 完全没有 token 时退回匿名访问 (每小时 60 次请求).
 - 为恶劣网络设计的代理路由: `auto` 模式下 API 请求先直连, `raw.githubusercontent.com` 请求先走代理; 可用 `always` 和 `direct` 覆盖. 代理候选按顺序尝试: `GITHUB_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, 然后是 git 的代理配置.
 - 能在重启后存活的 ETag 磁盘缓存: 未超过 TTL 的条目直接本地返回, 过期条目用 `If-None-Match`/`If-Modified-Since` 廉价重验证, 收到 304 就复用已存的响应体, 不再重新下载.
@@ -164,7 +164,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 ## 限制
 
 - 从构造上只读: 不支持写操作, GraphQL, clone 或 archive 工具.
-- 22 个工具, 不是完整的 GitHub API 客户端; 专用工具没覆盖的只读 REST 端点用 `github_api_get`.
+- 32 个工具, 不是完整的 GitHub API 客户端; 专用工具没覆盖的只读 REST 端点用 `github_api_get`.
 - 匿名访问每小时 60 次; 代码搜索需要 token.
 - 不内置代理; 请自备 HTTP(S) 代理.
 - 缓存会把响应体写到磁盘; 共享账号无法接受这一点时不要使用.
@@ -180,7 +180,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 ## 工作原理
 
-每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 外, 每个读取 API 的工具都接受 `fresh` 选项, 为单次请求绕过缓存; `github_api_get` 的响应与其他工具一样进缓存, 并报告 `cache` 和 `cache_age_seconds`; `github_capabilities` 不接受输入. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
+每次工具调用都会变成一次针对 GitHub REST API 的 GET 请求. 请求先经过缓存层: 未超过端点 TTL 的条目直接本地返回, 过期条目用 ETag 重验证; 只有成功的响应才会进缓存, 所以 not-found 响应永远不会被缓存, 每次都以 `not_found` 错误呈现. 除 `github_rate_limit` 外, 每个读取 API 的工具都接受 `fresh` 选项, 为单次请求绕过缓存; `github_api_get` 的响应与其他工具一样进缓存; `github_capabilities` 不接受输入. 每个走网络的响应都以 `meta: {cache, age_s, quota}` 结尾. 缓存之下, HTTP 层为每个请求选择路由, 重试传输失败, 自动等过短的速率限制窗口, 并在 token 被拒时刷新一次再放弃.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 
@@ -198,7 +198,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 | `GITHUB_CACHE_DIR` | 平台缓存目录 | 覆盖磁盘缓存位置. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | 单次请求超时 (毫秒). |
 | `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | 响应文本的 UTF-8 字节上限, 超出即截断 (单次调用可用 `max_bytes` 进一步收紧). |
-| `GITHUB_MCP_EXPOSE_IDENTITY` | 未设置 | 显式开启: `1`/`true`/`yes`/`on` 让 `github_rate_limit` 追加 `authenticated_as` 和 `scopes`; 其他取值保持关闭. |
+| `GITHUB_MCP_EXPOSE_IDENTITY` | 未设置 | 显式开启: `1`/`true`/`yes`/`on` 让 `github_rate_limit` 和 `github_doctor` 追加 `authenticated_as` 和 `scopes`; 其他取值保持关闭. |
 | `GITHUB_MCP_LOG` | `error` | 会被解析和校验; 目前未使用 - 警告始终写入 stderr, 与级别无关. |
 
 无效值会被忽略, 在 stderr 上给出警告, 然后使用默认值.
@@ -207,14 +207,15 @@ VS Code, 加到 `.vscode/mcp.json`:
 
 Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_capabilities` 的每行还带从同一 schema 派生的输入行 (名字, 可选性, 说明), 索引与 schema 不会漂移. 分组与 `github_capabilities` 返回的索引一致.
 
-- Meta: `github_capabilities` (一行摘要带 `Envelope:` 标签, 外加每个工具派生的 `input` 行与输入签名), `github_rate_limit` (通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; 不支持 GraphQL)
-- Repository: `github_repo` (报告 `visibility`), `github_branches`
-- Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间, 以及单次调用的 `max_bytes` 预算)
+- Meta: `github_capabilities` (一行摘要带 `Envelope:` 标签, 外加每个工具派生的 `input` 行与输入签名), `github_rate_limit` (默认只投影 core 和 search; `all: true` 展开全部资源桶; 通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; `pagination` 携带 Link 头的翻页 URL; 不支持 GraphQL), `github_doctor` (一屏自检: token 是否存在, 可选的身份输出, 代理可达性, 缓存状态和配额)
+- Repository: `github_repo` (报告 `visibility`), `github_repos` (一次并发批量查询最多 20 个仓库, 每项独立报告 ok 或 error), `github_compare_refs` (ahead/behind 计数, 总 commit 数, 前 100 个变更文件, patch 截断到 4000 字符), `github_branches`, `github_languages` (按语言统计字节数, 降序排列), `github_contributors` (login, 账号类型和贡献次数), `github_repo_activity` (窗口期内的 pull, issue, commit, 活跃贡献者和 release 计数, 只消耗 core 配额, 附截断标记)
+- User: `github_user` (单个用户主页: name, type, bio, company, location, blog 和粉丝数), `github_user_repos` (用户的仓库列表, 采用统一的投影字段; `type` 默认为 `owner`), `github_user_starred` (用户 star 过的仓库, 附 `starred_at` 时间), `github_user_events` (仅公开事件)
+- Files: `github_tree` (默认最多返回 `max_entries` 1000 条, 附 `total_entries`, 类型 `summary` 和 `api_truncated`; 递归列目录超时会降级为顶层条目并标记 `degraded: true`; `summary_only: true` 省略 `entries`, 改为返回 `total_bytes` 和 `top_dirs`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间, 以及单次调用的 `max_bytes` 预算)
 - History: `github_commits`
-- Collaboration: `github_issue`, `github_issues`, `github_pr`, `github_prs`
-- Releases: `github_release`, `github_releases`
+- Collaboration: `github_issue`, `github_issues` (接受 `since`, 一个 ISO 8601 时间戳, 按更新时间过滤), `github_pr`, `github_prs`
+- Releases: `github_release` (最新或指定 tag 的 release, 含资产与下载链接; GitHub 提供时资产带 `digest`), `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (一次调用对最多 20 个仓库做限速的横向对比)
-- Search: `github_search_repos` (每条结果报告 `private` 和 `visibility`; `public_only` 默认为 `true` — 传 `false` 才包含私有仓库 — 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`
+- Search: `github_search_repos` (每条结果报告 `private`, `visibility`, `topics` 和 `license`; `public_only` 默认为 `true` — 传 `false` 才包含私有仓库 — 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## 故障排查
@@ -232,7 +233,7 @@ Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_c
 - `npm test`: 运行测试套件
 - `npm run typecheck`: 运行严格 TypeScript 检查
 - `npm run build`: 编译生产构建
-- `npm run smoke`: 通过 stdio 启动构建产物, 断言 22 个工具全部列出
+- `npm run smoke`: 通过 stdio 启动构建产物, 断言 32 个工具全部列出
 - `GITHUB_SMOKE=1 npm test`: 带着 `GITHUB_SMOKE` 运行测试套件; 该变量目前是预留变量, 未被使用
 
 ## 许可证

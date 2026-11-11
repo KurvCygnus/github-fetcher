@@ -13,6 +13,10 @@ export interface CapabilityInput {
   description: string;
 }
 
+//* Optionality is derived from `z.ZodOptional` alone: a field wrapped in
+//* `.default()` would report `optional: false` even though callers may omit it.
+//* No registered tool uses `.default()` today; if one appears, extend this
+//* derivation or the index misreports that input as required.
 export function capabilityInputs(shape: z.ZodRawShape): CapabilityInput[] {
   return Object.entries(shape).map(([name, field]) => ({
     name,
@@ -41,7 +45,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_user_repos: { group: "User", summary: "A user's public repositories with the house projection: visibility, fork, stars, watchers, language, push time. Envelope: items[]", signature: "user, type?, sort?, order?, page?, per_page?, fresh?" },
   github_user_starred: { group: "User", summary: "Repositories a user starred, with the starred time from the star+json media type. Envelope: items[]", signature: "user, page?, per_page?, fresh?" },
   github_user_events: { group: "User", summary: "A user's public events with type, repository, and time; private events are never included. Envelope: items[]", signature: "user, page?, per_page?, fresh?" },
-  github_tree: { group: "Files", summary: "File and directory listing at a ref, recursive optional. Envelope: entries[]", signature: "repo, ref?, path?, recursive?, max_entries?, summary_only?, fresh?" },
+  github_tree: { group: "Files", summary: "File and directory listing at a ref, recursive optional; summary_only drops entries for totals. Envelope: entries[]", signature: "repo, ref?, path?, recursive?, max_entries?, summary_only?, fresh?" },
   github_file: { group: "Files", summary: "One file's text at a ref; reports binary files without bytes. Envelope: single object", signature: "repo, path, ref?, start_line?, end_line?, max_bytes?, fresh?" },
   github_commits: { group: "History", summary: "Commit list on a ref: short sha, message, author, and date. Envelope: items[]", signature: "repo, ref?, path?, author?, since?, until?, page?, per_page?, fresh?" },
   github_issue: { group: "Collaboration", summary: "One issue or pull request with labels and assignees. Envelope: single object", signature: "repo, number, include_comments?, comment_limit?, max_comment_chars?, fresh?" },

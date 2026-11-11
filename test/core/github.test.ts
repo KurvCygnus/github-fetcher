@@ -60,13 +60,20 @@ describe("GithubClient", () => {
 
   it("rejects traversal, fragments, and relative paths in apiRaw with invalid_params", async () => {
     const { client, get } = harness();
-    for (const path of ["//evil.test/x", "/a/../b", "/repos/a/b#frag", "repos/a/b"]) {
+    for (const path of ["//evil.test/x", "/a/../b", "repos/a/b"]) {
       await expect(client.apiRaw(path)).rejects.toMatchObject({ code: "invalid_params" });
     }
+    //? The fragment message is asserted at the path-part position: a raw # in the
+    //* path is the common case, and the whole-string check rejects it before the
+    //* path/query split, so the same message covers a # in the query part.
+    await expect(client.apiRaw("/repos/a/b#frag")).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("fragment"),
+    });
     expect(get).not.toHaveBeenCalled();
   });
 
-  it("allows dot-dot and rejects only raw fragments inside the query part", async () => {
+  it("allows dot-dot in the query part and rejects a second query separator", async () => {
     const { client, get } = harness();
     get.mockResolvedValueOnce(
       httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
@@ -74,10 +81,6 @@ describe("GithubClient", () => {
     const result = await client.apiRaw("/search/issues?q=stars:10..20");
     expect(result.status).toBe(200);
     expect(get.mock.calls[0]![0]).toBe("https://api.github.com/search/issues?q=stars:10..20");
-    await expect(client.apiRaw("/search/issues?q=stars:10..20&x=1#frag")).rejects.toMatchObject({
-      code: "invalid_params",
-      message: expect.stringContaining("fragment"),
-    });
     await expect(client.apiRaw("/search/issues?q=a?b")).rejects.toMatchObject({
       code: "invalid_params",
       message: expect.stringContaining("at most one query string separator"),

@@ -40,7 +40,7 @@ export const treeTool = defineTool({
   name: "github_tree",
   title: "GitHub tree",
   description:
-    "List files and directories in a repository at a ref, using the git trees API. Use recursive=true only when the full tree is needed. Returns {ref, path, entries[{path, type, size, sha}], total_entries, returned_entries, summary, truncated, api_truncated}.",
+    "List files and directories in a repository at a ref, using the git trees API. Use recursive=true only when the full tree is needed. summary_only drops entries and returned_entries and answers with total_bytes plus top_dirs totals instead. Returns {ref, path, entries[{path, type, size, sha}], total_entries, returned_entries, summary, truncated, api_truncated}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
