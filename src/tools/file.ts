@@ -2,6 +2,7 @@ import { z } from "zod";
 import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { resolveRef } from "./ref.js";
 import { encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -48,10 +49,12 @@ export const fileTool = defineTool({
     const { owner, name } = parseRepo(input.repo);
     const ref = await resolveRef(ctx.client, owner, name, input.ref, input.fresh);
     const path = encodePath(input.path);
-    const { data } = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
+    const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
       `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
+    const { data } = contents;
+    const meta = responseMeta(contents);
     if (Array.isArray(data)) {
       throw new GithubError("invalid_params", "path points to a directory; use github_tree");
     }
@@ -82,6 +85,9 @@ export const fileTool = defineTool({
         start_line: null,
         end_line: null,
         total_lines: null,
+        //? meta is spread last on both exits (binary and text) so it trails the
+        //* fixed keys and stays absent when the client reported no cache outcome.
+        ...(meta !== undefined ? { meta } : {}),
       };
     }
 
@@ -126,6 +132,7 @@ export const fileTool = defineTool({
       start_line: startLine,
       end_line: endLine,
       total_lines: totalLines,
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });

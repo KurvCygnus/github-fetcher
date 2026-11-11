@@ -19,7 +19,7 @@ describe("github_rate_limit", () => {
   it("projects quota without leaking identity", async () => {
     //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
     //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const result = await rateLimitTool.handler(
       {},
       { client, config: makeConfig(), authFingerprint: "abc123" },
@@ -30,13 +30,14 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
+      meta: { cache: "miss" },
     });
     expect(JSON.stringify(result)).not.toContain("abc123");
     expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
   });
 
   it("labels anonymous mode", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const result = await rateLimitTool.handler(
       {},
       { client, config: makeConfig(), authFingerprint: "anonymous" },
@@ -45,7 +46,7 @@ describe("github_rate_limit", () => {
   });
 
   it("trims the default projection to the core and search buckets", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       {},
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -54,7 +55,7 @@ describe("github_rate_limit", () => {
   });
 
   it("returns every bucket when all is true", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       { all: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -66,11 +67,12 @@ describe("github_rate_limit", () => {
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
         graphql: { limit: 50, remaining: 50, reset: "2023-11-14T22:14:10.000Z", used: 0 },
       },
+      meta: { cache: "miss" },
     });
   });
 
   it("returns only graphql when resource alone names it", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       { resource: "graphql" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -79,7 +81,7 @@ describe("github_rate_limit", () => {
   });
 
   it("prefers resource over all when both are given", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       { resource: "graphql", all: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -88,7 +90,7 @@ describe("github_rate_limit", () => {
   });
 
   it("filters resources when resource is given", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       { resource: "core" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -97,7 +99,7 @@ describe("github_rate_limit", () => {
   });
 
   it("returns empty resources for an unknown resource", async () => {
-    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
+    const client = { api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })), apiRaw: vi.fn(), raw: vi.fn() } as unknown as GitHubApi;
     const output = await rateLimitTool.handler(
       { resource: "nope" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -125,6 +127,7 @@ describe("github_rate_limit", () => {
           headers: new Headers(options.scopes === undefined ? {} : { "x-oauth-scopes": options.scopes }),
           status: 200,
           contentType: "application/json",
+          cache: { state: "miss" },
         };
       }),
       apiRaw: vi.fn(),
@@ -144,6 +147,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
+      meta: { cache: "miss" },
     });
     expect(client.api).toHaveBeenCalledTimes(1);
     expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
@@ -163,6 +167,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
+      meta: { cache: "miss" },
     });
     expect(client.api).toHaveBeenCalledWith("/user", { cacheTtlMs: 300_000 });
     expect(JSON.stringify(result)).not.toContain("abc123");
@@ -176,6 +181,61 @@ describe("github_rate_limit", () => {
     );
     expect(result).toMatchObject({ authenticated_as: null, scopes: ["repo"] });
     expect((result as { resources: unknown }).resources).toBeDefined();
+  });
+
+  //? Sweep test (Task 14): a single-request tool appends responseMeta from its one
+  //* /rate_limit call. A mock without an observation reports the cache outcome
+  //* alone; the client extracts the x-ratelimit header pair into the result's
+  //* quota snapshot, and the mock spells that extracted snapshot out directly.
+  it("appends meta from the quota call's cache outcome and quota snapshot", async () => {
+    const headerless = {
+      api: vi.fn(async () => ({
+        data: fixture,
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      {},
+      { client: headerless, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toEqual({
+      auth: "token",
+      resources: {
+        core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
+        search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
+      },
+      meta: { cache: "miss" },
+    });
+
+    const withQuota = {
+      api: vi.fn(async () => ({
+        data: fixture,
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+        quota: { resource: "core", remaining: 4990 },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const quotaOutput = await rateLimitTool.handler(
+      {},
+      { client: withQuota, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(quotaOutput).toEqual({
+      auth: "token",
+      resources: {
+        core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
+        search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
+      },
+      meta: { cache: "miss", quota: { resource: "core", remaining: 4990 } },
+    });
   });
 
   it("reports anonymous identity without calling /user", async () => {
@@ -192,6 +252,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
+      meta: { cache: "miss" },
     });
     expect(client.api).toHaveBeenCalledTimes(1);
   });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { searchEnvelope } from "./pagination.js";
 import { githubQuery } from "./util.js";
 
@@ -73,10 +74,12 @@ export const searchReposTool = defineTool({
       page,
       per_page: perPage,
     });
-    const { data, headers } = await ctx.client.api<SearchResponse<RepoItem>>(
+    const result = await ctx.client.api<SearchResponse<RepoItem>>(
       `/search/repositories${query}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.items.map((repo) => ({
       full_name: repo.full_name,
       description: repo.description,
@@ -95,6 +98,8 @@ export const searchReposTool = defineTool({
     //* and public_only: false is the explicit way back to the full view.
     const publicOnly = input.public_only ?? true;
     const visible = publicOnly ? items.filter((repo) => !repo.private) : items;
+    //? meta is spread after the search envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
     return {
       ...searchEnvelope(
         visible,
@@ -105,6 +110,7 @@ export const searchReposTool = defineTool({
         headers.get("link"),
       ),
       filtered_count: items.length - visible.length,
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
@@ -133,7 +139,7 @@ export const searchCodeTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ q: input.query, page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<SearchResponse<CodeItem>>(
+    const result = await ctx.client.api<SearchResponse<CodeItem>>(
       `/search/code${query}`,
       {
         fresh: input.fresh,
@@ -141,6 +147,8 @@ export const searchCodeTool = defineTool({
         accept: "application/vnd.github.text-match+json",
       },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.items.map((item) => ({
       repo: item.repository.full_name,
       path: item.path,
@@ -148,14 +156,19 @@ export const searchCodeTool = defineTool({
       html_url: item.html_url,
       text_matches: item.text_matches ?? [],
     }));
-    return searchEnvelope(
-      items,
-      data.total_count,
-      data.incomplete_results,
-      page,
-      perPage,
-      headers.get("link"),
-    );
+    //? meta is spread after the search envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...searchEnvelope(
+        items,
+        data.total_count,
+        data.incomplete_results,
+        page,
+        perPage,
+        headers.get("link"),
+      ),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });
 
@@ -188,10 +201,12 @@ export const searchIssuesTool = defineTool({
       page,
       per_page: perPage,
     });
-    const { data, headers } = await ctx.client.api<SearchResponse<IssueItem>>(
+    const result = await ctx.client.api<SearchResponse<IssueItem>>(
       `/search/issues${query}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.items.map((item) => ({
       repo: item.repository_url.replace(/^https:\/\/api\.github\.com\/repos\//, ""),
       number: item.number,
@@ -202,13 +217,18 @@ export const searchIssuesTool = defineTool({
       updated_at: item.updated_at,
       html_url: item.html_url,
     }));
-    return searchEnvelope(
-      items,
-      data.total_count,
-      data.incomplete_results,
-      page,
-      perPage,
-      headers.get("link"),
-    );
+    //? meta is spread after the search envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...searchEnvelope(
+        items,
+        data.total_count,
+        data.incomplete_results,
+        page,
+        perPage,
+        headers.get("link"),
+      ),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

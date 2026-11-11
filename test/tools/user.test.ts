@@ -7,7 +7,7 @@ import { makeConfig } from "../helpers.js";
 //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
 function clientWith(data: unknown) {
   return {
-    api: vi.fn(async () => ({ data, headers: new Headers(), status: 200, contentType: "application/json" })),
+    api: vi.fn(async () => ({ data, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
     apiRaw: vi.fn(),
     raw: vi.fn(),
   } as unknown as GitHubApi;
@@ -58,6 +58,7 @@ describe("github_user", () => {
       following: 9,
       created_at: "2011-01-25T18:44:36Z",
       html_url: "https://github.com/octocat",
+      meta: { cache: "miss" },
     });
   });
 
@@ -88,6 +89,7 @@ describe("github_user", () => {
       following: 0,
       created_at: "2011-01-25T18:44:36Z",
       html_url: "https://github.com/octocat",
+      meta: { cache: "miss" },
     });
   });
 });
@@ -161,6 +163,7 @@ describe("github_user_repos", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 
@@ -237,6 +240,7 @@ describe("github_user_starred", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 });
@@ -272,6 +276,7 @@ describe("github_user_events", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 
@@ -287,6 +292,7 @@ describe("github_user_events", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 });

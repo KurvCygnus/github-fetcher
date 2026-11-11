@@ -13,6 +13,7 @@ describe("github_branches", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -27,6 +28,7 @@ describe("github_branches", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 });

@@ -107,6 +107,17 @@ describe("github_capabilities", () => {
     expect(new Set(names).size).toBe(allTools.length);
   });
 
+  //? Sweep test (Task 14, negative): the index is the one zero-network tool, so
+  //* its envelope must NOT grow the meta key every network-backed tool carries.
+  it("carries no meta key because the index answers without network calls", async () => {
+    const output = await capabilitiesTool.handler({}, {
+      client: {} as never,
+      config: makeConfig(),
+      authFingerprint: "abc",
+    });
+    expect("meta" in output).toBe(false);
+  });
+
   it("returns signatures in the tool rows", async () => {
     const output = await capabilitiesTool.handler({}, {
       client: {} as never,

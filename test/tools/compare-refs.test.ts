@@ -22,6 +22,7 @@ function clientFor(payload: unknown) {
       headers: new Headers(),
       status: 200,
       contentType: "application/json",
+      cache: { state: "miss" },
     })),
     apiRaw: vi.fn(),
     raw: vi.fn(),
@@ -53,8 +54,9 @@ describe("github_compare_refs", () => {
       fresh: undefined,
       cacheTtlMs: 120_000,
     });
-    //? Strict equality pins the whole envelope: a missing patch maps to null
-    //* and no files_truncated key exists when nothing was capped.
+    //? Strict equality pins the whole envelope: a missing patch maps to null,
+    //* no files_truncated key exists when nothing was capped, and the networked
+    //* response carries the meta entry trailing the fixed keys.
     expect(output).toStrictEqual({
       status: "ahead",
       ahead_by: 2,
@@ -64,6 +66,7 @@ describe("github_compare_refs", () => {
         { filename: "src/a.ts", status: "modified", additions: 10, deletions: 2, patch: "@@ -1,2 +1,3 @@" },
         { filename: "src/b.ts", status: "added", additions: 5, deletions: 0, patch: null },
       ],
+      meta: { cache: "miss" },
     });
   });
 

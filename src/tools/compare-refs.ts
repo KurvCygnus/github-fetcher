@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { parseRepo, truncateText } from "./util.js";
 
 //? Only the fields this tool reads are typed; the REST payload carries more.
@@ -41,10 +42,12 @@ export const compareRefsTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<CompareResponse>(
+    const compareResponse = await ctx.client.api<CompareResponse>(
       `/repos/${owner}/${name}/compare/${encodeURIComponent(input.base)}...${encodeURIComponent(input.head)}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data } = compareResponse;
+    const meta = responseMeta(compareResponse);
     const allFiles = data.files ?? [];
     const files = allFiles.slice(0, MAX_FILES).map((file) => ({
       filename: file.filename,
@@ -63,6 +66,8 @@ export const compareRefsTool = defineTool({
     //? The flag appears only when the cap actually cut something; its absence
     //? means the listed files are the complete diff.
     if (allFiles.length > MAX_FILES) result.files_truncated = true;
-    return result;
+    //? meta is spread last so it trails the fixed keys (and the conditional
+    //* files_truncated flag) and stays absent when no cache outcome exists.
+    return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });

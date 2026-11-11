@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { linkFor, listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -80,10 +81,12 @@ export const issueTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<IssueResponse>(
+    const issueResponse = await ctx.client.api<IssueResponse>(
       `/repos/${owner}/${name}/issues/${input.number}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data } = issueResponse;
+    const meta = responseMeta(issueResponse);
     const result: Record<string, unknown> = issueFields(data, ctx.config.maxFileBytes);
     if (input.include_comments) {
       const first = await ctx.client.api<CommentResponse[]>(
@@ -119,7 +122,9 @@ export const issueTool = defineTool({
       }));
       result.comments_truncated = data.comments > latest.length;
     }
-    return result;
+    //? meta is spread last on the single return path (with or without comments)
+    //* so it trails the fixed keys and stays absent when no cache outcome exists.
+    return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });
 
@@ -162,10 +167,12 @@ export const issuesTool = defineTool({
       page,
       per_page: perPage,
     });
-    const { data, headers } = await ctx.client.api<IssueResponse[]>(
+    const result = await ctx.client.api<IssueResponse[]>(
       `/repos/${owner}/${name}/issues${query}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const mapped = data.map((issue) => ({
       number: issue.number,
       title: issue.title,
@@ -183,6 +190,11 @@ export const issuesTool = defineTool({
     //* parameter. The Link header still describes the unfiltered page, so has_more
     //* and next_page stay accurate even when this page's items are all filtered out.
     const items = typeFilter === "all" ? mapped : mapped.filter((item) => item.type === typeFilter);
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

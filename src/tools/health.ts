@@ -1,6 +1,8 @@
 import { z } from "zod";
+import type { ApiResult } from "../core/github.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { scarcestMeta } from "./meta.js";
 import { safeCount } from "./safe-count.js";
 import { parseRepo } from "./util.js";
 
@@ -56,7 +58,9 @@ export const healthTool = defineTool({
     const windowStart = windowStartDate(new Date(), windowDays);
     const fresh = input.fresh;
 
-    const [payload, openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCounts] = await Promise.all([
+    //? safeCount returns {total, result}: the total feeds the snapshot, the result
+    //* joins the scarcest-meta report below alongside the repo payload.
+    const [payload, openIssuesS, openPrsS, openedTotalS, openedStillOpenS, closedS, ...labelCountS] = await Promise.all([
       ctx.client.api<RepoPayload>(`/repos/${owner}/${name}`, { fresh, cacheTtlMs: 600_000 }),
       safeCount(ctx, `repo:${repo} is:issue state:open`, fresh),
       safeCount(ctx, `repo:${repo} is:pr state:open`, fresh),
@@ -65,19 +69,30 @@ export const healthTool = defineTool({
       safeCount(ctx, `repo:${repo} is:issue state:closed closed:>${windowStart}`, fresh),
       ...labels.map((label) => safeCount(ctx, `repo:${repo} is:issue state:open label:"${label}"`, fresh)),
     ]);
+    const openIssues = openIssuesS.total;
+    const openPrs = openPrsS.total;
+    const openedTotal = openedTotalS.total;
+    const openedStillOpen = openedStillOpenS.total;
+    const closed = closedS.total;
 
     //? Any of the 9 searches resolving null means part of the snapshot is unknown;
     //? the flag lets callers distinguish "zero" from "search did not answer".
-    const searchUnavailable = [openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCounts]
+    const searchUnavailable = [openIssues, openPrs, openedTotal, openedStillOpen, closed, ...labelCountS.map((entry) => entry.total)]
       .some((value) => value === null);
 
     let latestRelease: LatestRelease | null = null;
+    let releaseResult: ApiResult<LatestRelease> | undefined;
     try {
-      const { data } = await ctx.client.api<LatestRelease>(
+      const result = await ctx.client.api<LatestRelease>(
         `/repos/${owner}/${name}/releases/latest`,
         { fresh, cacheTtlMs: 600_000 },
       );
-      latestRelease = { tag_name: data.tag_name, published_at: data.published_at, prerelease: data.prerelease };
+      releaseResult = result;
+      latestRelease = {
+        tag_name: result.data.tag_name,
+        published_at: result.data.published_at,
+        prerelease: result.data.prerelease,
+      };
     } catch (error) {
       //* Repositories without any release answer 404; that is an expected outcome,
       //* so it becomes latest_release: null. The catch sits after the GithubClient
@@ -88,11 +103,26 @@ export const healthTool = defineTool({
 
     const windowLabels: Record<string, number | null> = {};
     labels.forEach((label, index) => {
-      //? noUncheckedIndexedAccess makes labelCounts[index] number | null | undefined;
-      //? labelCounts is the same labels list mapped over safeCount(), so the indices
-      //? always align and the ?? null fallback only normalizes undefined to "unknown".
-      windowLabels[label] = labelCounts[index] ?? null;
+      //? noUncheckedIndexedAccess makes labelCountS[index] SafeCountResult |
+      //? undefined; labelCountS is the same labels list mapped over safeCount(),
+      //* so the indices always align and the ?? null fallback only normalizes
+      //* undefined to "unknown".
+      windowLabels[label] = labelCountS[index]?.total ?? null;
     });
+
+    //? Multi-request tool: the envelope reports the scarcest observation across
+    //* every request in the batch (lowest remaining, tagged with its resource),
+    //* staying undefined when no request produced a client result at all.
+    const meta = scarcestMeta([
+      payload,
+      openIssuesS.result,
+      openPrsS.result,
+      openedTotalS.result,
+      openedStillOpenS.result,
+      closedS.result,
+      ...labelCountS.map((entry) => entry.result),
+      releaseResult,
+    ]);
 
     return {
       repo,
@@ -112,6 +142,7 @@ export const healthTool = defineTool({
       window: { opened_total: openedTotal, opened_still_open: openedStillOpen, closed, labels: windowLabels },
       search_unavailable: searchUnavailable,
       latest_release: latestRelease,
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 
 interface RateResource {
   limit: number;
@@ -39,7 +40,9 @@ export const rateLimitTool = defineTool({
     openWorldHint: true,
   },
   async handler(input, ctx) {
-    const { data, headers } = await ctx.client.api<RateLimitResponse>("/rate_limit", { cacheTtlMs: 0 });
+    const result = await ctx.client.api<RateLimitResponse>("/rate_limit", { cacheTtlMs: 0 });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const projection = Object.fromEntries(
       Object.entries(data.resources).map(([name, value]) => [
         name,
@@ -67,7 +70,9 @@ export const rateLimitTool = defineTool({
           );
     const auth = ctx.authFingerprint === "anonymous" ? "anonymous" : "token";
     if (!ctx.config.exposeIdentity) {
-      return { auth, resources };
+      //? meta is spread last so it trails the fixed keys on every return path,
+      //* and stays absent entirely when the client reported no cache outcome.
+      return { auth, resources, ...(meta !== undefined ? { meta } : {}) };
     }
     const scopes = parseScopes(headers.get("x-oauth-scopes"));
     //* Identity is best-effort: a failed /user lookup degrades to a null login and
@@ -81,6 +86,6 @@ export const rateLimitTool = defineTool({
         authenticatedAs = null;
       }
     }
-    return { auth, authenticated_as: authenticatedAs, scopes, resources };
+    return { auth, authenticated_as: authenticatedAs, scopes, resources, ...(meta !== undefined ? { meta } : {}) };
   },
 });

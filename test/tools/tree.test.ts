@@ -21,7 +21,7 @@ describe("github_tree", () => {
     //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
     //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
     const client = {
-      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json" })),
+      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
     } as unknown as GitHubApi;
@@ -47,6 +47,7 @@ describe("github_tree", () => {
       returned_entries: 4,
       summary: { files: 1, dirs: 1, symlinks: 1, submodules: 1 },
       api_truncated: false,
+      meta: { cache: "miss" },
     });
   });
 
@@ -71,6 +72,7 @@ describe("github_tree", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -104,6 +106,7 @@ describe("github_tree", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -125,6 +128,7 @@ describe("github_tree", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -147,6 +151,7 @@ describe("github_tree", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -180,6 +185,7 @@ describe("github_tree", () => {
           headers: new Headers(),
           status: 200,
           contentType: "application/json",
+          cache: { state: "miss" },
         }),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -278,6 +284,7 @@ describe("github_tree", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -295,6 +302,7 @@ describe("github_tree", () => {
       top_dirs: [{ path: "src", files: 1, bytes: 42 }],
       truncated: false,
       api_truncated: false,
+      meta: { cache: "miss" },
     });
     expect("entries" in output).toBe(false);
     expect("returned_entries" in output).toBe(false);

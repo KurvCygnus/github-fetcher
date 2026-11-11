@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo } from "./util.js";
 
@@ -30,15 +31,22 @@ export const branchesTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<BranchResponse[]>(
+    const result = await ctx.client.api<BranchResponse[]>(
       `/repos/${owner}/${name}/branches${query}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((branch) => ({
       name: branch.name,
       sha: branch.commit.sha,
       protected: branch.protected,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

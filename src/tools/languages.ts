@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { parseRepo } from "./util.js";
 
 //? The languages endpoint answers a flat name-to-bytes record; nothing else is typed.
@@ -22,10 +23,12 @@ export const languagesTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<LanguagesResponse>(`/repos/${owner}/${name}/languages`, {
+    const result = await ctx.client.api<LanguagesResponse>(`/repos/${owner}/${name}/languages`, {
       fresh: input.fresh,
       cacheTtlMs: 300_000,
     });
+    const { data } = result;
+    const meta = responseMeta(result);
     //* The API's record arrives in no guaranteed order; entries are rebuilt into a
     //* fresh object in bytes-descending order so key insertion order is the sort.
     const sorted = Object.entries(data).sort(([, a], [, b]) => b - a);
@@ -35,6 +38,8 @@ export const languagesTool = defineTool({
       languages[language] = bytes;
       totalBytes += bytes;
     }
-    return { languages, total_bytes: totalBytes };
+    //? meta is spread last so it trails the fixed keys and stays absent entirely
+    //* when the client reported no cache outcome.
+    return { languages, total_bytes: totalBytes, ...(meta !== undefined ? { meta } : {}) };
   },
 });

@@ -20,7 +20,7 @@ function contents(content: string) {
 //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
 function clientFor(data: unknown): GitHubApi {
   return {
-    api: vi.fn(async () => ({ data, headers: new Headers(), status: 200, contentType: "application/json" })),
+    api: vi.fn(async () => ({ data, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
     apiRaw: vi.fn(),
     raw: vi.fn(),
   } as unknown as GitHubApi;
@@ -46,6 +46,7 @@ describe("github_file", () => {
       start_line: 1,
       end_line: 2,
       total_lines: 2,
+      meta: { cache: "miss" },
     });
   });
 

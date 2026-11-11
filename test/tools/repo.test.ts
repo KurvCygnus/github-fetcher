@@ -22,7 +22,7 @@ const fixture = {
   created_at: "2011-01-26T19:01:12Z",
 };
 
-const result = { data: fixture, headers: new Headers(), status: 200, contentType: "application/json" };
+const result = { data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } };
 
 describe("github_repo", () => {
   it("maps the documented fields", async () => {
@@ -55,6 +55,7 @@ describe("github_repo", () => {
       archived: false,
       pushed_at: "2024-01-02T00:00:00Z",
       created_at: "2011-01-26T19:01:12Z",
+      meta: { cache: "miss" },
     });
   });
 

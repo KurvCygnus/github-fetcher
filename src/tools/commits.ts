@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo } from "./util.js";
 
@@ -48,10 +49,12 @@ export const commitsTool = defineTool({
       page,
       per_page: perPage,
     });
-    const { data, headers } = await ctx.client.api<CommitResponse[]>(
+    const result = await ctx.client.api<CommitResponse[]>(
       `/repos/${owner}/${name}/commits${query}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((commit) => ({
       sha: commit.sha,
       short_sha: commit.sha.slice(0, 7),
@@ -64,6 +67,11 @@ export const commitsTool = defineTool({
       date: commit.commit.author.date,
       url: commit.html_url,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

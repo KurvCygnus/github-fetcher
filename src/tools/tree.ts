@@ -1,6 +1,8 @@
 import { z } from "zod";
+import type { ApiResult } from "../core/github.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { resolveRef } from "./ref.js";
 import { encodePath, githubQuery, parseRepo } from "./util.js";
 
@@ -67,17 +69,19 @@ export const treeTool = defineTool({
         { fresh: input.fresh, cacheTtlMs: 600_000 },
       );
     };
-    let data: GitTreeResponse;
+    let tree: ApiResult<GitTreeResponse>;
     let degraded = false;
     try {
-      data = (await fetchTree(input.recursive === true)).data;
+      tree = await fetchTree(input.recursive === true);
     } catch (error) {
       //* Degrade exactly once and only for a timed-out recursive listing; every
       //* other failure, including a second timeout on this retry, rethrows.
       if (!input.recursive || !isTimeoutError(error)) throw error;
-      data = (await fetchTree(false)).data;
+      tree = await fetchTree(false);
       degraded = true;
     }
+    const data = tree.data;
+    const meta = responseMeta(tree);
     const all = (data.tree ?? []).map((entry) => ({
       path: entry.path,
       type: normalizeType(entry),
@@ -141,12 +145,16 @@ export const treeTool = defineTool({
         top_dirs: [...groups]
           .map(([path, aggregate]) => ({ path, files: aggregate.files, bytes: aggregate.bytes }))
           .sort((a, b) => b.bytes - a.bytes),
+        //? meta is spread last on both modes so it trails every fixed key and
+        //* stays absent entirely when the client reported no cache outcome.
+        ...(meta !== undefined ? { meta } : {}),
       };
     }
     return {
       ...base,
       entries: all.slice(0, maxEntries),
       returned_entries: Math.min(all.length, maxEntries),
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });

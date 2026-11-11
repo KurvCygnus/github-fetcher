@@ -130,6 +130,63 @@ describe("github_repo_health", () => {
     });
   });
 
+  //? Sweep test (Task 14): github_repo_health is a multi-request tool, so the
+  //* envelope reports the scarcest quota observation across its batch. Each route
+  //* answers with a different remaining value (repo drew core at 4990, the search
+  //* calls drew search at 25 and 30, the release call drew core at 4999); the
+  //* lowest remaining wins, tagged with that request's resource. The client
+  //* extracts the x-ratelimit header pair into the result's quota snapshot, so
+  //* the mocks spell that extracted snapshot out directly.
+  it("reports the scarcest quota observation across the batch", async () => {
+    const quota = (resource: string, remaining: number) => ({ resource, remaining });
+    const client = {
+      api: vi.fn(async (url: string) => {
+        if (url === "/repos/o/r") {
+          return {
+            data: repoPayload,
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+            quota: quota("core", 4990),
+          };
+        }
+        if (url === "/repos/o/r/releases/latest") {
+          return {
+            data: { tag_name: "v2.2.5", published_at: "2026-10-30T23:17:23Z", prerelease: false },
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+            quota: quota("core", 4999),
+          };
+        }
+        if (url.startsWith("/search/issues?")) {
+          const q = decodeURIComponent(new URL(`https://x${url}`).searchParams.get("q") ?? "");
+          const remaining = q.includes("state:closed") ? 30 : 25;
+          return {
+            data: { total_count: 1 },
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+            quota: quota("search", remaining),
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await healthTool.handler(
+      { repo: "o/r" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({
+      meta: { cache: "miss", quota: { resource: "search", remaining: 25 } },
+    });
+  });
+
   it("honors label overrides and a missing latest release", async () => {
     const client = {
       api: vi.fn(async (url: string) => {

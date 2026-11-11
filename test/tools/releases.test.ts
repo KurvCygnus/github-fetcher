@@ -24,6 +24,7 @@ describe("github_release", () => {
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -52,6 +53,7 @@ describe("github_release", () => {
         { name: "a.zip", size: 10, download_count: 2, digest: "sha256:abc", browser_download_url: "https://example.com/a.zip" },
         { name: "b.zip", size: 20, download_count: 5, digest: null, browser_download_url: "https://example.com/b.zip" },
       ],
+      meta: { cache: "miss" },
     });
   });
 
@@ -101,6 +103,7 @@ function releasesClient() {
       headers: new Headers(),
       status: 200,
       contentType: "application/json",
+      cache: { state: "miss" },
     })),
     apiRaw: vi.fn(),
     raw: vi.fn(),
@@ -133,6 +136,7 @@ describe("github_releases", () => {
       per_page: 3,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 
@@ -154,6 +158,7 @@ describe("github_releases", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 });

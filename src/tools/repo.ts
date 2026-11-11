@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { parseRepo } from "./util.js";
 
 interface RepoResponse {
@@ -39,10 +40,12 @@ export const repoTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<RepoResponse>(`/repos/${owner}/${name}`, {
+    const result = await ctx.client.api<RepoResponse>(`/repos/${owner}/${name}`, {
       fresh: input.fresh,
       cacheTtlMs: 600_000,
     });
+    const { data } = result;
+    const meta = responseMeta(result);
     return {
       full_name: data.full_name,
       description: data.description,
@@ -61,6 +64,9 @@ export const repoTool = defineTool({
       archived: data.archived,
       pushed_at: data.pushed_at,
       created_at: data.created_at,
+      //? meta is spread last so it trails the fixed keys and stays absent entirely
+      //* when the client reported no cache outcome.
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });

@@ -24,6 +24,7 @@ describe("github_commits", () => {
         headers: new Headers({ link }),
         status: 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       })),
       apiRaw: vi.fn(),
       raw: vi.fn(),
@@ -51,6 +52,7 @@ describe("github_commits", () => {
       per_page: 1,
       has_more: true,
       next_page: 2,
+      meta: { cache: "miss" },
     });
   });
 });

@@ -7,7 +7,7 @@ import { makeConfig } from "../helpers.js";
 //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
 function clientWith(data: unknown, link: string | null = null) {
   return {
-    api: vi.fn(async () => ({ data, headers: new Headers(link ? { link } : {}), status: 200, contentType: "application/json" })),
+    api: vi.fn(async () => ({ data, headers: new Headers(link ? { link } : {}), status: 200, contentType: "application/json", cache: { state: "miss" } })),
     apiRaw: vi.fn(),
     raw: vi.fn(),
   } as unknown as GitHubApi;
@@ -36,6 +36,7 @@ describe("github_contributors", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 
@@ -58,6 +59,7 @@ describe("github_contributors", () => {
       per_page: 5,
       has_more: true,
       next_page: 3,
+      meta: { cache: "miss" },
     });
   });
 
@@ -73,6 +75,7 @@ describe("github_contributors", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
+      meta: { cache: "miss" },
     });
   });
 

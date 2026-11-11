@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { listEnvelope } from "./pagination.js";
 import { githubQuery } from "./util.js";
 
@@ -82,9 +83,11 @@ export const userTool = defineTool({
   },
   async handler(input, ctx) {
     const user = parseUser(input.user);
-    const { data } = await ctx.client.api<UserResponse>(`/users/${user}`, {
+    const result = await ctx.client.api<UserResponse>(`/users/${user}`, {
       cacheTtlMs: 300_000,
     });
+    const { data } = result;
+    const meta = responseMeta(result);
     return {
       login: data.login,
       name: data.name ?? null,
@@ -98,6 +101,9 @@ export const userTool = defineTool({
       following: data.following,
       created_at: data.created_at,
       html_url: data.html_url,
+      //? meta is spread last so it trails the fixed keys and stays absent entirely
+      //* when the client reported no cache outcome.
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
@@ -127,10 +133,12 @@ export const userReposTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ type: input.type, sort: input.sort, order: input.order, page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
+    const result = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
       fresh: input.fresh,
       cacheTtlMs: 120_000,
     });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((repo) => ({
       name: repo.name,
       full_name: repo.full_name,
@@ -144,7 +152,12 @@ export const userReposTool = defineTool({
       description: repo.description,
       html_url: repo.html_url,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });
 
@@ -170,11 +183,13 @@ export const userStarredTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<StarredResponse[]>(`/users/${user}/starred${query}`, {
+    const result = await ctx.client.api<StarredResponse[]>(`/users/${user}/starred${query}`, {
       fresh: input.fresh,
       cacheTtlMs: 300_000,
       accept: "application/vnd.github.star+json",
     });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((entry) => ({
       repo: entry.repo.full_name,
       stars: entry.repo.stargazers_count,
@@ -182,7 +197,12 @@ export const userStarredTool = defineTool({
       starred_at: entry.starred_at,
       pushed_at: entry.repo.pushed_at,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });
 
@@ -208,15 +228,22 @@ export const userEventsTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<EventResponse[]>(`/users/${user}/events/public${query}`, {
+    const result = await ctx.client.api<EventResponse[]>(`/users/${user}/events/public${query}`, {
       fresh: input.fresh,
       cacheTtlMs: 60_000,
     });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((event) => ({
       type: event.type,
       repo: event.repo.name,
       created_at: event.created_at,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { linkFor, listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -50,10 +51,12 @@ export const prTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<PullResponse>(
+    const pullResponse = await ctx.client.api<PullResponse>(
       `/repos/${owner}/${name}/pulls/${input.number}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data } = pullResponse;
+    const meta = responseMeta(pullResponse);
     const result: Record<string, unknown> = {
       number: data.number,
       title: data.title,
@@ -88,7 +91,9 @@ export const prTool = defineTool({
       }));
       result.files_truncated = linkFor(files.headers, "next") !== null;
     }
-    return result;
+    //? meta is spread last on the single return path (with or without files) so
+    //* it trails the fixed keys and stays absent when no cache outcome exists.
+    return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });
 
@@ -126,10 +131,12 @@ export const prsTool = defineTool({
       page,
       per_page: perPage,
     });
-    const { data, headers } = await ctx.client.api<PullResponse[]>(
+    const result = await ctx.client.api<PullResponse[]>(
       `/repos/${owner}/${name}/pulls${query}`,
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.map((pull) => ({
       number: pull.number,
       title: pull.title,
@@ -141,6 +148,11 @@ export const prsTool = defineTool({
       updated_at: pull.updated_at,
       html_url: pull.html_url,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

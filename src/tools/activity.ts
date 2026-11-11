@@ -1,8 +1,11 @@
 import { z } from "zod";
+import type { ApiResult } from "../core/github.js";
 import type { ToolContext } from "../core/context.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { windowStartDate } from "./health.js";
+import type { MetaSource } from "./meta.js";
+import { scarcestMeta } from "./meta.js";
 import { githubQuery, parseRepo } from "./util.js";
 
 //? Only the fields this tool reads are typed; the REST payloads carry more.
@@ -47,6 +50,9 @@ const STATS_ATTEMPTS = 2;
 interface WalkResult<T> {
   items: T[];
   truncated: boolean;
+  //* Every page response the walk issued, kept for the handler's scarcest-meta
+  //* report: the lowest remaining across pages is the honest worst case.
+  results: MetaSource[];
 }
 
 //* Newest-first windowed walk: accumulate items while inWindow holds, stop at the
@@ -65,35 +71,45 @@ async function walkNewestFirst<T>(
   keep: (item: T) => boolean,
 ): Promise<WalkResult<T>> {
   const items: T[] = [];
+  const results: MetaSource[] = [];
   for (let page = 1; page <= maxPages; page += 1) {
     const query = githubQuery({ ...params, page });
-    const { data } = await ctx.client.api<T[]>(`${base}${query}`, { fresh, cacheTtlMs: WALK_TTL_MS });
+    const result = await ctx.client.api<T[]>(`${base}${query}`, { fresh, cacheTtlMs: WALK_TTL_MS });
+    results.push(result);
+    const { data } = result;
     for (const item of data) {
       if (!inWindow(item)) {
-        return { items, truncated: false };
+        return { items, truncated: false, results };
       }
       if (keep(item)) items.push(item);
     }
-    if (data.length < WALK_PER_PAGE) return { items, truncated: false };
+    if (data.length < WALK_PER_PAGE) return { items, truncated: false, results };
   }
-  return { items, truncated: true };
+  return { items, truncated: true, results };
 }
 
 //* GitHub computes stats asynchronously: the first answer is 202 (still working).
-//* Retry once immediately and report null on a second failure instead of making
-//* the caller wait or throwing — the flag carries the "unknown" meaning. A real
-//* 202 answers an empty body, which fails JSON parsing inside the client and
+//* Retry once immediately and report null data on a second failure instead of
+//* making the caller wait or throwing — the flag carries the "unknown" meaning. A
+//* real 202 answers an empty body, which fails JSON parsing inside the client and
 //* surfaces as an upstream GithubError, so that counts as a failed attempt too.
-async function fetchStats<T>(ctx: ToolContext, path: string, fresh: boolean | undefined): Promise<T | null> {
+//* The answering 200's client result travels beside the data for the scarcest
+//* meta report; a failed stats fetch contributes no result, like any rejected
+//* sub-request.
+async function fetchStats<T>(
+  ctx: ToolContext,
+  path: string,
+  fresh: boolean | undefined,
+): Promise<{ data: T | null; result: ApiResult<T> | undefined }> {
   for (let attempt = 0; attempt < STATS_ATTEMPTS; attempt += 1) {
     try {
       const result = await ctx.client.api<T>(path, { fresh, cacheTtlMs: STATS_TTL_MS });
-      if (result.status === 200) return result.data;
+      if (result.status === 200) return { data: result.data, result };
     } catch (error) {
       if (!(error instanceof GithubError)) throw error;
     }
   }
-  return null;
+  return { data: null, result: undefined };
 }
 
 //* Median of merged pulls' (merged_at - created_at) hours; sorted, and for an
@@ -136,7 +152,7 @@ export const repoActivityTool = defineTool({
     const fresh = input.fresh;
     const weeks = Math.ceil(windowDays / 7);
 
-    const [pulls, issues, releases, participation, contributorStats] = await Promise.all([
+    const [pulls, issues, releases, participationS, contributorStatsS] = await Promise.all([
       walkNewestFirst<PullPayload>(
         ctx,
         `/repos/${owner}/${name}/pulls`,
@@ -177,6 +193,8 @@ export const repoActivityTool = defineTool({
     const closed = pulls.items.filter((pull) => pull.state === "closed" && pull.merged_at === null).length;
     const botOpened = pulls.items.filter((pull) => (pull.user?.login ?? "").endsWith("[bot]")).length;
     const issuesClosed = issues.items.filter((item) => item.closed_at !== null).length;
+    const participation = participationS.data;
+    const contributorStats = contributorStatsS.data;
     //* Participation's all array is oldest-first; the window is the last ceil(days/7)
     //* weekly buckets. Contributor activity is the same tail of additions+deletions.
     const commits = participation === null ? null : participation.all.slice(-weeks).reduce((sum, count) => sum + count, 0);
@@ -185,6 +203,17 @@ export const repoActivityTool = defineTool({
       : contributorStats.filter(
           (entry) => entry.weeks.slice(-weeks).reduce((sum, week) => sum + week.a + week.d, 0) > 0,
         ).length;
+
+    //? Multi-request tool: the envelope reports the scarcest observation across
+    //* every walk page and the answering stats calls (lowest remaining, tagged
+    //* with its resource), staying undefined when nothing produced a result.
+    const meta = scarcestMeta([
+      ...pulls.results,
+      ...issues.results,
+      ...releases.results,
+      participationS.result,
+      contributorStatsS.result,
+    ]);
 
     return {
       repo,
@@ -200,6 +229,7 @@ export const repoActivityTool = defineTool({
       issues_truncated: issues.truncated,
       releases_truncated: releases.truncated,
       stats_unavailable: participation === null || contributorStats === null,
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });

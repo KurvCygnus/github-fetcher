@@ -1,6 +1,8 @@
 import { z } from "zod";
+import type { ApiResult } from "../core/github.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -56,16 +58,20 @@ export const releaseTool = defineTool({
       html_url: null,
       assets: [],
     } as const;
-    let data: ReleaseResponse;
+    let result: ApiResult<ReleaseResponse>;
     try {
-      ({ data } = await ctx.client.api<ReleaseResponse>(path, {
+      result = await ctx.client.api<ReleaseResponse>(path, {
         fresh: input.fresh,
         cacheTtlMs: 600_000,
-      }));
+      });
     } catch (error) {
+      //? The 404 exit has no client result, so its found:false shape carries no
+      //* meta key; every networked success below spreads meta last.
       if (error instanceof GithubError && error.code === "not_found") return notFound;
       throw error;
     }
+    const { data } = result;
+    const meta = responseMeta(result);
     return {
       found: true,
       tag_name: data.tag_name,
@@ -82,6 +88,7 @@ export const releaseTool = defineTool({
         digest: asset.digest ?? null,
         browser_download_url: asset.browser_download_url,
       })),
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
@@ -109,10 +116,12 @@ export const releasesTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<ReleaseResponse[]>(
+    const result = await ctx.client.api<ReleaseResponse[]>(
       `/repos/${owner}/${name}/releases${query}`,
       { fresh: input.fresh, cacheTtlMs: 600_000 },
     );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     //* Filtering happens after the fetch, not in the query, so the Link header and
     //* thus has_more/next_page keep describing the upstream pages; callers stepping
     //* through next_page never silently skip a page that filtered to zero items.
@@ -128,6 +137,11 @@ export const releasesTool = defineTool({
       published_at: release.published_at,
       html_url: release.html_url,
     }));
-    return listEnvelope(items, page, perPage, headers.get("link"));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
+    };
   },
 });

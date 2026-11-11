@@ -112,6 +112,7 @@ function clientWithRoutes(routes: Record<string, (page: number) => MockReply>) {
         headers: new Headers(),
         status: reply.status ?? 200,
         contentType: "application/json",
+        cache: { state: "miss" },
       };
     }),
     apiRaw: vi.fn(),
@@ -176,6 +177,7 @@ describe("github_repo_activity", () => {
       issues_truncated: false,
       releases_truncated: false,
       stats_unavailable: false,
+      meta: { cache: "miss" },
     });
     //? The pull walk stopped inside page 3, so page 4 must never be requested.
     expect(callsFor(client, "/repos/o/r/pulls")).toHaveLength(3);
@@ -221,6 +223,7 @@ describe("github_repo_activity", () => {
       issues_truncated: false,
       releases_truncated: false,
       stats_unavailable: false,
+      meta: { cache: "miss" },
     });
     expect(callsFor(client, "/repos/o/r/pulls")).toHaveLength(10);
   });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
+import { responseMeta } from "./meta.js";
 import { linkFor, listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo } from "./util.js";
 
@@ -78,22 +79,27 @@ export const workflowsTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const { data, headers } = await ctx.client.api<{
+    const result = await ctx.client.api<{
       total_count: number;
       workflows: WorkflowResponse[];
     }>(`/repos/${owner}/${name}/actions/workflows${query}`, {
       fresh: input.fresh,
       cacheTtlMs: 300_000,
     });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.workflows.map((workflow) => ({
       id: workflow.id,
       name: workflow.name,
       path: workflow.path,
       state: workflow.state,
     }));
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
     return {
       total_count: data.total_count,
       ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
@@ -133,14 +139,19 @@ export const workflowRunsTool = defineTool({
     const path = input.workflow_id
       ? `/repos/${owner}/${name}/actions/workflows/${input.workflow_id}/runs${query}`
       : `/repos/${owner}/${name}/actions/runs${query}`;
-    const { data, headers } = await ctx.client.api<{
+    const result = await ctx.client.api<{
       total_count: number;
       workflow_runs: WorkflowRunResponse[];
     }>(path, { fresh: input.fresh, cacheTtlMs: 60_000 });
+    const { data, headers } = result;
+    const meta = responseMeta(result);
     const items = data.workflow_runs.map(runFields);
+    //? meta is spread after the list envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
     return {
       total_count: data.total_count,
       ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(meta !== undefined ? { meta } : {}),
     };
   },
 });
@@ -164,10 +175,12 @@ export const workflowRunTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const { data } = await ctx.client.api<WorkflowRunResponse & { jobs?: JobResponse[] }>(
+    const runResponse = await ctx.client.api<WorkflowRunResponse & { jobs?: JobResponse[] }>(
       `/repos/${owner}/${name}/actions/runs/${input.run_id}`,
       { fresh: input.fresh, cacheTtlMs: 60_000 },
     );
+    const { data } = runResponse;
+    const meta = responseMeta(runResponse);
     const result: Record<string, unknown> = runFields(data);
     if (input.include_jobs) {
       const jobs = await ctx.client.api<{ jobs: JobResponse[] }>(
@@ -190,6 +203,8 @@ export const workflowRunTool = defineTool({
       }));
       result.jobs_truncated = linkFor(jobs.headers, "next") !== null;
     }
-    return result;
+    //? meta is spread last on the single return path (with or without jobs) so
+    //* it trails the fixed keys and stays absent when no cache outcome exists.
+    return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });
