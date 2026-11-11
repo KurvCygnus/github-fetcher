@@ -102,8 +102,12 @@ function validateApiPath(path: string): void {
   }
   const separator = path.indexOf("?");
   const pathPart = separator === -1 ? path : path.slice(0, separator);
-  if (!pathPart.startsWith("/") || pathPart.startsWith("//")) {
-    throw new GithubError("invalid_params", "path must be an absolute API path without .. or //");
+  //? fetch treats \ as / in special-scheme paths (new URL("https://h/a\\..\\b")
+  //* collapses to /b), so a backslash smuggles traversal and segment rewriting
+  //* past the /-split checks below; a raw \ has no legitimate use in a GitHub
+  //* API path, so it is rejected outright rather than normalized.
+  if (!pathPart.startsWith("/") || pathPart.startsWith("//") || pathPart.includes("\\")) {
+    throw new GithubError("invalid_params", "path must be an absolute API path without .., //, or \\");
   }
   //? Segment-scoped traversal check: fetch normalizes the path with WHATWG URL
   //* rules, which collapse %2e variants (any case) into real dot segments, so a
@@ -116,7 +120,7 @@ function validateApiPath(path: string): void {
   for (const segment of pathPart.split("/")) {
     const decoded = segment.toLowerCase().split("%2e").join(".");
     if (decoded === "..") {
-      throw new GithubError("invalid_params", "path must be an absolute API path without .. or //");
+      throw new GithubError("invalid_params", "path must be an absolute API path without .., //, or \\");
     }
   }
   if (separator !== -1 && path.slice(separator + 1).includes("?")) {

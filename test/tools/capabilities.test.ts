@@ -60,11 +60,16 @@ describe("CAPABILITY_GROUPS", () => {
       "github_branches", "github_commits", "github_issues", "github_prs", "github_releases",
       "github_workflows", "github_workflow_runs", "github_search_repos", "github_search_code",
       "github_search_issues",
+      //? Part 2 tools; every tag here is read off the summary in
+      //* src/tools/capabilities.ts, not guessed.
+      "github_user_repos", "github_user_starred", "github_user_events", "github_contributors",
     ];
     const singleTools = [
       "github_repo", "github_file", "github_issue", "github_pr", "github_release",
       "github_workflow_run", "github_rate_limit", "github_capabilities", "github_repo_health",
       "github_compare_repos",
+      "github_user", "github_repos", "github_compare_refs", "github_languages",
+      "github_repo_activity", "github_doctor",
     ];
     for (const name of itemTools) {
       expect(CAPABILITY_GROUPS[name]!.summary.endsWith("Envelope: items[]"), name).toBe(true);

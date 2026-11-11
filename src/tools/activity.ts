@@ -180,10 +180,14 @@ export const repoActivityTool = defineTool({
         windowStart,
         fresh,
         MAX_RELEASE_PAGES,
-        //* A null published_at (draft) cannot be placed in the window, so it ends
-        //* the walk like an out-of-window item.
-        (release) => release.published_at !== null && release.published_at >= windowStart,
-        () => true,
+        //? A draft (published_at null) cannot be placed in the window, but GitHub
+        //* lists drafts first for push-access callers, so a draft must not end
+        //* the walk: treating it as out-of-window silently dropped every release
+        //* behind it (drafts sort newest-first, so the remainder stays
+        //* date-ordered). inWindow lets drafts through and keep filters them out
+        //* of the count — the same shape the issues walk uses for interleaved PRs.
+        (release) => release.published_at === null || release.published_at >= windowStart,
+        (release) => release.published_at !== null,
       ),
       fetchStats<ParticipationPayload>(ctx, `/repos/${owner}/${name}/stats/participation`, fresh),
       fetchStats<ContributorStatsPayload[]>(ctx, `/repos/${owner}/${name}/stats/contributors`, fresh),

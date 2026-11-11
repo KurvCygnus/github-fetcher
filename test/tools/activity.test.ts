@@ -194,6 +194,29 @@ describe("github_repo_activity", () => {
     expect(client.api).toHaveBeenCalledWith("/repos/o/r/stats/contributors", { fresh: undefined, cacheTtlMs: 300_000 });
   });
 
+  it("skips a leading draft release and keeps walking instead of ending at it", async () => {
+    const client = clientWithRoutes({
+      "/repos/o/r/pulls": () => ({ data: [] }),
+      "/repos/o/r/issues": () => ({ data: [] }),
+      //? GitHub lists drafts first for push-access callers; a draft (published_at
+      //* null) cannot be placed in the window but must not end the walk, or every
+      //* release behind it is silently dropped from the count.
+      "/repos/o/r/releases": () => ({
+        data: [{ published_at: null }, release(2), release(31)],
+      }),
+      "/repos/o/r/stats/participation": () => ({ data: participationAll([]) }),
+      "/repos/o/r/stats/contributors": () => ({ data: [] }),
+    });
+    const output = await repoActivityTool.handler(
+      { repo: "o/r" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    //? The draft is skipped, the in-window published release is counted, and the
+    //* walk still stops at the out-of-window release behind it.
+    expect(output).toMatchObject({ releases: 1, releases_truncated: false });
+    expect(callsFor(client, "/repos/o/r/releases")).toHaveLength(1);
+  });
+
   it("stops the pulls walk at the 10-page cap and reports pulls_truncated", async () => {
     const client = clientWithRoutes({
       "/repos/o/r/pulls": (page) => {

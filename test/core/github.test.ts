@@ -73,6 +73,16 @@ describe("GithubClient", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it("rejects backslashes in the path with invalid_params", async () => {
+    const { client, get } = harness();
+    //? fetch treats \ as / in special-scheme paths, so /repos/a\..\b silently
+    //* normalizes to /repos/b at the network layer while the segment check (which
+    //* splits on / only) passes it through. A raw backslash has no legitimate use
+    //* in a GitHub API path, so it is rejected outright.
+    await expect(client.apiRaw("/repos/a\\..\\b")).rejects.toMatchObject({ code: "invalid_params" });
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("allows dot-dot in the query part and rejects a second query separator", async () => {
     const { client, get } = harness();
     get.mockResolvedValueOnce(
