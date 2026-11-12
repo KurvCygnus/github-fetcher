@@ -71,7 +71,7 @@ describe("CAPABILITY_GROUPS", () => {
       "github_user_repos", "github_user_starred", "github_user_events", "github_contributors",
     ];
     const singleTools = [
-      "github_repo", "github_file", "github_issue", "github_pr", "github_release",
+      "github_repo", "github_file", "github_readme", "github_issue", "github_pr", "github_release",
       "github_workflow_run", "github_rate_limit", "github_capabilities", "github_repo_health",
       "github_compare_repos",
       "github_user", "github_repos", "github_compare_refs", "github_languages",
