@@ -13,6 +13,68 @@ function clientWith(data: unknown) {
   } as unknown as GitHubApi;
 }
 
+//* Repo fixture carrying exactly the fields the projection reads; the stars
+//* count and fork flag drive every filter and ranking test.
+function repoFixture(name: string, stars: number, fork = false) {
+  return {
+    name,
+    full_name: `octocat/${name}`,
+    private: false,
+    fork,
+    stargazers_count: stars,
+    watchers_count: stars,
+    language: "TypeScript",
+    pushed_at: "2026-01-02T03:04:05Z",
+    description: null,
+    html_url: `https://github.com/octocat/${name}`,
+  };
+}
+
+interface PageReply {
+  data: unknown;
+  link?: string;
+  quota?: { resource: string; remaining: number };
+}
+
+//* The rel="next" Link header GitHub sends while further pages exist; the URL
+//* only has to carry a parseable page param for parseNextPage.
+function nextLink(user: string, page: number): string {
+  return `<https://api.github.com/users/${user}/repos?page=${page}&per_page=100>; rel="next"`;
+}
+
+//? Routes switch on pathname and hand the parsed page number to the route, so a
+//! gather can serve different content per page; an unrouted URL or page fails
+//! loudly instead of silently returning a wrong-shaped page.
+function clientWithRoutes(routes: Record<string, (page: number) => PageReply>) {
+  return {
+    api: vi.fn(async (url: string) => {
+      const parsed = new URL(`https://api.github.com${url}`);
+      const route = routes[parsed.pathname];
+      if (route === undefined) throw new Error(`unexpected url ${url}`);
+      const reply = route(Number(parsed.searchParams.get("page") ?? "1"));
+      return {
+        data: reply.data,
+        headers: new Headers(reply.link === undefined ? {} : { link: reply.link }),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+        ...(reply.quota !== undefined ? { quota: reply.quota } : {}),
+      };
+    }),
+    apiRaw: vi.fn(),
+    raw: vi.fn(),
+  } as unknown as GitHubApi;
+}
+
+function requestedUrls(client: GitHubApi, prefix: string): string[] {
+  const api = (client as unknown as { api: { mock: { calls: Array<[string, unknown]> } } }).api;
+  return api.mock.calls.map((call) => call[0]).filter((url) => url.startsWith(prefix));
+}
+
+function namesOf(items: unknown): string[] {
+  return (items as Array<{ name: string }>).map((item) => item.name);
+}
+
 describe("user login validation", () => {
   it("rejects logins outside the GitHub charset with invalid_params", async () => {
     const ctx = { client: clientWith({}), config: makeConfig(), authFingerprint: "abc" };
@@ -113,7 +175,9 @@ describe("github_user_repos", () => {
         name: "private-repo",
         full_name: "octocat/private-repo",
         private: true,
-        fork: true,
+        //* fork: false keeps this item visible under the default fork filter;
+        //* fork filtering itself has its own suite below.
+        fork: false,
         stargazers_count: 0,
         watchers_count: 0,
         language: null,
@@ -150,7 +214,7 @@ describe("github_user_repos", () => {
           full_name: "octocat/private-repo",
           private: true,
           visibility: "private",
-          fork: true,
+          fork: false,
           stars: 0,
           watchers: 0,
           language: null,
@@ -201,6 +265,152 @@ describe("github_user_repos", () => {
       "/users/octocat/repos?type=owner&sort=pushed&order=desc&page=2&per_page=5",
       { fresh: true, cacheTtlMs: 120_000 },
     );
+  });
+});
+
+describe("github_user_repos filters", () => {
+  it("drops forks by default and keeps them with include_forks", async () => {
+    const client = clientWith([repoFixture("hello-world", 1), repoFixture("forked-lab", 3, true)]);
+    const filtered = await userReposTool.handler(
+      { user: "octocat" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    //? The fork filter is client-side, so the upstream request stays the plain
+    //* paginated read no matter how the filters are set.
+    expect(client.api).toHaveBeenCalledWith("/users/octocat/repos?page=1&per_page=20", {
+      fresh: undefined,
+      cacheTtlMs: 120_000,
+    });
+    expect(namesOf(filtered.items)).toEqual(["hello-world"]);
+
+    const kept = await userReposTool.handler(
+      { user: "octocat", include_forks: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(namesOf(kept.items)).toEqual(["hello-world", "forked-lab"]);
+  });
+
+  it("applies min_stars per page and keeps the envelope Link-derived", async () => {
+    const client = clientWithRoutes({
+      "/users/octocat/repos": () => ({
+        data: [repoFixture("five", 5), repoFixture("zero", 0), repoFixture("two", 2)],
+        link: nextLink("octocat", 2),
+      }),
+    });
+    const output = await userReposTool.handler(
+      { user: "octocat", min_stars: 1 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(namesOf(output.items)).toEqual(["five", "two"]);
+    //? Passthrough mode: filtering can leave the page short but the Link header
+    //* still decides has_more/next_page (the search public_only precedent).
+    expect(output.has_more).toBe(true);
+    expect(output.next_page).toBe(2);
+    expect(requestedUrls(client, "/users/octocat/repos")).toEqual(["/users/octocat/repos?page=1&per_page=20"]);
+  });
+
+  it("ranks a two-page gather by stars and reports the scarcest meta", async () => {
+    const client = clientWithRoutes({
+      "/users/octocat/repos": (page) => {
+        if (page === 1) {
+          return {
+            data: [repoFixture("ten", 10), repoFixture("forty", 40)],
+            link: nextLink("octocat", 2),
+            quota: { resource: "core", remaining: 48 },
+          };
+        }
+        if (page === 2) {
+          return { data: [repoFixture("twenty-five", 25), repoFixture("seven", 7)], quota: { resource: "core", remaining: 47 } };
+        }
+        throw new Error(`unexpected gather page ${page}`);
+      },
+    });
+    const page1 = await userReposTool.handler(
+      { user: "octocat", sort: "stars", per_page: 2 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    //? The gather walks pages 1-2 at per_page 100 in upstream order and the
+    //* ranked window is [40, 25, 10, 7], so page 1 of the window is [40, 25].
+    expect(namesOf(page1.items)).toEqual(["forty", "twenty-five"]);
+    expect(page1).toMatchObject({ page: 1, per_page: 2, has_more: true, next_page: 2 });
+    expect(page1.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 47 } });
+    expect("gather_truncated" in page1).toBe(false);
+
+    const page2 = await userReposTool.handler(
+      { user: "octocat", sort: "stars", page: 2, per_page: 2 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(namesOf(page2.items)).toEqual(["ten", "seven"]);
+    expect(page2).toMatchObject({ page: 2, per_page: 2, has_more: false, next_page: null });
+
+    //? Each windowed request re-gathers the whole ranking, so both requests
+    //* walk pages 1-2 at per_page 100 with no sort forwarded upstream.
+    expect(requestedUrls(client, "/users/octocat/repos")).toEqual([
+      "/users/octocat/repos?page=1&per_page=100",
+      "/users/octocat/repos?page=2&per_page=100",
+      "/users/octocat/repos?page=1&per_page=100",
+      "/users/octocat/repos?page=2&per_page=100",
+    ]);
+  });
+
+  it("caps the stars gather at ten pages and flags gather_truncated", async () => {
+    const client = clientWithRoutes({
+      "/users/octocat/repos": (page) => {
+        if (page > 12) throw new Error(`unexpected gather page ${page}`);
+        const stars = (page - 1) * 100;
+        return {
+          data: Array.from({ length: 100 }, (_, index) => repoFixture(`repo-${stars + index}`, stars + index)),
+          //* Every page advertises a next page, so only the 10-page cap can
+          //* stop the gather.
+          link: nextLink("octocat", page + 1),
+        };
+      },
+    });
+    const output = await userReposTool.handler(
+      { user: "octocat", sort: "stars" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(requestedUrls(client, "/users/octocat/repos")).toEqual(
+      Array.from({ length: 10 }, (_, index) => `/users/octocat/repos?page=${index + 1}&per_page=100`),
+    );
+    expect(output.gather_truncated).toBe(true);
+    //? The gathered window holds stars 0-999, so the top 20 run repo-999 down
+    //* to repo-980.
+    expect(namesOf(output.items)).toEqual(Array.from({ length: 20 }, (_, index) => `repo-${999 - index}`));
+    expect(output.has_more).toBe(true);
+    expect(output.next_page).toBe(2);
+  });
+
+  it("drops forks from the stars-sorted window and ranks them back in with include_forks", async () => {
+    const client = clientWithRoutes({
+      "/users/octocat/repos": (page) => {
+        if (page === 1) {
+          return { data: [repoFixture("giant-fork", 500, true), repoFixture("small", 30)], link: nextLink("octocat", 2) };
+        }
+        return { data: [repoFixture("tiny", 10)] };
+      },
+    });
+    const filtered = await userReposTool.handler(
+      { user: "octocat", sort: "stars" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(namesOf(filtered.items)).toEqual(["small", "tiny"]);
+
+    const kept = await userReposTool.handler(
+      { user: "octocat", sort: "stars", include_forks: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(namesOf(kept.items)).toEqual(["giant-fork", "small", "tiny"]);
+  });
+
+  it("returns an empty envelope for a user whose repositories are all forks", async () => {
+    const client = clientWith([repoFixture("fork-a", 4, true), repoFixture("fork-b", 0, true)]);
+    const output = await userReposTool.handler(
+      { user: "octocat" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output.items).toEqual([]);
+    expect(output).toMatchObject({ page: 1, per_page: 20, has_more: false, next_page: null });
   });
 });
 

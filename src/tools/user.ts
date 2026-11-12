@@ -1,8 +1,10 @@
 import { z } from "zod";
+import type { ToolContext } from "../core/context.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
-import { responseMeta } from "./meta.js";
-import { listEnvelope } from "./pagination.js";
+import type { MetaSource } from "./meta.js";
+import { responseMeta, scarcestMeta } from "./meta.js";
+import { listEnvelope, parseNextPage } from "./pagination.js";
 import { githubQuery } from "./util.js";
 
 //? Only the fields this tool reads are typed; the REST payload carries more.
@@ -108,16 +110,90 @@ export const userTool = defineTool({
   },
 });
 
+//* Stars ranking cannot be expressed upstream, so the handler gathers the
+//* repository window itself: upstream default order at 100 per page, capped at
+//* 10 pages so one profiling call cannot spend unbounded core quota.
+const GATHER_PER_PAGE = 100;
+const MAX_GATHER_PAGES = 10;
+
+//? Projects one REST repo payload into the house row; the fork and stars fields
+//* it emits are exactly what the client-side filters act on.
+function projectRepo(repo: RepoResponse) {
+  return {
+    name: repo.name,
+    full_name: repo.full_name,
+    private: repo.private,
+    visibility: repo.visibility ?? (repo.private ? "private" : "public"),
+    fork: repo.fork,
+    stars: repo.stargazers_count,
+    watchers: repo.watchers_count,
+    language: repo.language,
+    pushed_at: repo.pushed_at,
+    description: repo.description,
+    html_url: repo.html_url,
+  };
+}
+
+type RepoItem = ReturnType<typeof projectRepo>;
+
+//? Client-side filters shared by both modes: forks drop unless include_forks
+//* opts back in (profiling use-case: forks are noise), and min_stars keeps only
+//* rows at or above the star floor.
+function applyRepoFilters(items: RepoItem[], includeForks: boolean | undefined, minStars: number | undefined): RepoItem[] {
+  return items.filter(
+    (item) => (includeForks === true || !item.fork) && (minStars === undefined || item.stars >= minStars),
+  );
+}
+
+interface GatherResult {
+  payloads: RepoResponse[];
+  //* Every page response the gather issued, kept for the scarcest-meta report:
+  //* the lowest remaining across pages is the honest worst case.
+  results: MetaSource[];
+  //* true only when the 10-page cap — not the data — stopped the walk.
+  truncated: boolean;
+}
+
+//? Walks the repositories endpoint in upstream default order until the Link
+//* envelope runs out or the page cap stops the walk; each page's Link-derived
+//* next_page (the same parse listEnvelope reports) decides whether to continue,
+//* so a truncated gather is a prefix of the user's repositories.
+async function gatherRepos(
+  ctx: ToolContext,
+  user: string,
+  type: string | undefined,
+  fresh: boolean | undefined,
+): Promise<GatherResult> {
+  const payloads: RepoResponse[] = [];
+  const results: MetaSource[] = [];
+  //? The first fetch is unconditional; afterwards the previous page's Link
+  //* envelope decides whether another page exists.
+  let nextPage: number | null = 1;
+  for (let page = 1; nextPage !== null && page <= MAX_GATHER_PAGES; page += 1) {
+    const query = githubQuery({ type, page, per_page: GATHER_PER_PAGE });
+    const result = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
+      fresh,
+      cacheTtlMs: 120_000,
+    });
+    results.push(result);
+    payloads.push(...result.data);
+    nextPage = parseNextPage(result.headers.get("link"));
+  }
+  return { payloads, results, truncated: nextPage !== null };
+}
+
 export const userReposTool = defineTool({
   name: "github_user_repos",
   title: "GitHub user repositories",
   description:
-    "List a user's public repositories with the house projection: visibility, fork status, stars, watchers, language, push time, and description; type defaults to owner. Costs 1 core call. Returns {items[{name, full_name, private, visibility, fork, stars, watchers, language, pushed_at, description, html_url}], page, per_page, has_more, next_page}.",
+    "List a user's public repositories with the house projection: visibility, fork status, stars, watchers, language, push time, and description; type defaults to owner. Forks are dropped by default (include_forks: true keeps them) and min_stars keeps repositories at or above the star floor; both filters are client-side, so a filtered page can come back short. sort: stars gathers up to 10 pages of 100 client-side, ranks by stars descending, and reports has_more/next_page from the filtered window with gather_truncated when the cap stopped the gather. Costs 1 core call, up to 10 with sort: stars. Returns {items[{name, full_name, private, visibility, fork, stars, watchers, language, pushed_at, description, html_url}], page, per_page, has_more, next_page, gather_truncated}.",
   inputSchema: {
     user: z.string().regex(LOGIN_PATTERN).describe("GitHub user login, like octocat (alphanumerics and hyphens)"),
     type: z.enum(["all", "owner", "public", "private", "member"]).optional().describe("Filter by relationship to the user: all, owner, public, private, or member"),
-    sort: z.enum(["created", "updated", "pushed", "full_name"]).optional().describe("Sort field: created, updated, pushed, or full_name"),
+    sort: z.enum(["created", "updated", "pushed", "full_name", "stars"]).optional().describe("Sort field: created, updated, pushed, full_name, or stars (stars ranks client-side)"),
     order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc"),
+    min_stars: z.number().int().min(0).optional().describe("Keep repositories with at least this many stars (client-side filter)"),
+    include_forks: z.boolean().optional().describe("Keep fork repositories in the results; defaults to false, pass true to include them"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
@@ -132,6 +208,36 @@ export const userReposTool = defineTool({
     const user = parseUser(input.user);
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
+
+    //? In-gather mode: rank the filtered window in memory and slice the
+    //* requested page out of it; has_more/next_page describe that window, so a
+    //* cap-truncated gather still pages honestly through what was gathered.
+    if (input.sort === "stars") {
+      const gathered = await gatherRepos(ctx, user, input.type, input.fresh);
+      const ranked = applyRepoFilters(gathered.payloads.map(projectRepo), input.include_forks, input.min_stars)
+        //* filter() returns a fresh array, so the in-place stable sort is safe;
+        //* ties keep the upstream order the gather saw.
+        .sort((a, b) => b.stars - a.stars);
+      const start = (page - 1) * perPage;
+      const windowItems = ranked.slice(start, start + perPage);
+      const hasMore = start + perPage < ranked.length;
+      //? Multi-request mode: the scarcest observation across every gathered
+      //* page (lowest remaining, tagged with its resource) is the honest worst
+      //* case, undefined when nothing produced a result.
+      const meta = scarcestMeta(gathered.results);
+      return {
+        items: windowItems,
+        page,
+        per_page: perPage,
+        has_more: hasMore,
+        next_page: hasMore ? page + 1 : null,
+        //? gather_truncated appears only when the cap stopped the gather, the
+        //* same conditional spread the meta key uses.
+        ...(gathered.truncated ? { gather_truncated: true } : {}),
+        ...(meta !== undefined ? { meta } : {}),
+      };
+    }
+
     const query = githubQuery({ type: input.type, sort: input.sort, order: input.order, page, per_page: perPage });
     const result = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
       fresh: input.fresh,
@@ -139,19 +245,10 @@ export const userReposTool = defineTool({
     });
     const { data, headers } = result;
     const meta = responseMeta(result);
-    const items = data.map((repo) => ({
-      name: repo.name,
-      full_name: repo.full_name,
-      private: repo.private,
-      visibility: repo.visibility ?? (repo.private ? "private" : "public"),
-      fork: repo.fork,
-      stars: repo.stargazers_count,
-      watchers: repo.watchers_count,
-      language: repo.language,
-      pushed_at: repo.pushed_at,
-      description: repo.description,
-      html_url: repo.html_url,
-    }));
+    //? Passthrough mode: filters apply per page, so a filtered page can come
+    //* back short while has_more/next_page stay Link-derived (the search
+    //* public_only precedent, documented in the description).
+    const items = applyRepoFilters(data.map(projectRepo), input.include_forks, input.min_stars);
     //? meta is spread after the list envelope so it stays the trailing key and
     //* stays absent entirely when the client reported no cache outcome.
     return {

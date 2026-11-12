@@ -34,7 +34,7 @@ export const SUBCOMMANDS = {
   health: { tool: "github_repo_health", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", labels: "string-array", ...REPO_FRESH } },
   "compare-repos": { tool: "github_compare_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", ...REPO_FRESH } },
   user: { tool: "github_user", positional: [{ key: "user", kind: "string" }], flags: {} },
-  "user-repos": { tool: "github_user_repos", positional: [{ key: "user", kind: "string" }], flags: { type: "string", sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
+  "user-repos": { tool: "github_user_repos", positional: [{ key: "user", kind: "string" }], flags: { type: "string", sort: "string", order: "string", "min-stars": "number", "include-forks": "boolean", page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-starred": { tool: "github_user_starred", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-events": { tool: "github_user_events", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   contributors: { tool: "github_contributors", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
