@@ -36,8 +36,8 @@ $graphics.DrawString('agent gives up', $monoFont, $muted, 64, 314)
 
 $graphics.DrawString('After', $monoFont, $muted, 690, 210)
 $graphics.DrawString('github_rate_limit  auth: token', $monoFont, $green, 690, 246)
-$graphics.DrawString('32 tools ready', $monoFont, $green, 690, 280)
-$graphics.DrawString('32 tools, one command', $monoFont, $blue, 690, 314)
+$graphics.DrawString('34 tools ready', $monoFont, $green, 690, 280)
+$graphics.DrawString('34 tools, one command', $monoFont, $blue, 690, 314)
 
 $graphics.DrawString('npx -y @kurvcygnus/github-fetcher@latest init', $monoFont, $blue, 64, 520)
 $graphics.DrawString('github.com/KurvCygnus/github-fetcher', $monoFont, $muted, 64, 556)
