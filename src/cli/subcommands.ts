@@ -21,6 +21,7 @@ export const SUBCOMMANDS = {
   repos: { tool: "github_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { ...REPO_FRESH } },
   tree: { tool: "github_tree", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", recursive: "boolean", "max-entries": "number", "summary-only": "boolean", ...REPO_FRESH } },
   file: { tool: "github_file", positional: [{ key: "repo", kind: "string" }, { key: "path", kind: "string" }], flags: { ref: "string", "start-line": "number", "end-line": "number", "max-bytes": "number", ...REPO_FRESH } },
+  readme: { tool: "github_readme", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   commits: { tool: "github_commits", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", author: "string", since: "string", until: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   branches: { tool: "github_branches", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "compare-refs": { tool: "github_compare_refs", positional: [{ key: "repo", kind: "string" }, { key: "base", kind: "string" }, { key: "head", kind: "string" }], flags: { ...REPO_FRESH } },
