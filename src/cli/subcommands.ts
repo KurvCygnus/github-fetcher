@@ -15,7 +15,7 @@ const REPO_FRESH = { fresh: "boolean" } satisfies Record<string, FlagKind>;
 //? satisfies (not a Record annotation): dot access in tests and usage stays concrete, while
 //? string-keyed lookups go through subcommandSpec below, the only place that casts to Record.
 export const SUBCOMMANDS = {
-  capabilities: { tool: "github_capabilities", positional: [], flags: {} },
+  capabilities: { tool: "github_capabilities", positional: [], flags: { group: "string" } },
   rate: { tool: "github_rate_limit", positional: [], flags: { resource: "string", all: "boolean" } },
   repo: { tool: "github_repo", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   repos: { tool: "github_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { ...REPO_FRESH } },

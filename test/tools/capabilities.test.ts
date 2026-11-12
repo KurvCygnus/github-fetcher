@@ -51,7 +51,13 @@ describe("CAPABILITY_GROUPS", () => {
       },
     ]);
     const capabilities = rows.find((tool) => tool.name === "github_capabilities")!;
-    expect(capabilities.input).toEqual([]);
+    expect(capabilities.input).toEqual([
+      {
+        name: "group",
+        optional: true,
+        description: "Restrict the index to one group, e.g. Search or Files; groups are listed in the output",
+      },
+    ]);
     expect(rows).toHaveLength(allTools.length);
   });
 
@@ -131,7 +137,7 @@ describe("github_capabilities", () => {
     });
     const snapshot = output.groups as Array<{ group: string; tools: Array<{ name: string; signature: string }> }>;
     const rows = snapshot.flatMap((group) => group.tools);
-    expect(rows.find((tool) => tool.name === "github_capabilities")?.signature).toBe("none");
+    expect(rows.find((tool) => tool.name === "github_capabilities")?.signature).toBe("group?");
     expect(rows.find((tool) => tool.name === "github_rate_limit")?.signature).toBe("resource?, all?");
     expect(rows.find((tool) => tool.name === "github_tree")?.signature).toBe(
       "repo, ref?, path?, recursive?, max_entries?, summary_only?, fresh?",
@@ -142,5 +148,36 @@ describe("github_capabilities", () => {
     expect(rows.find((tool) => tool.name === "github_search_repos")?.signature).toBe(
       "query, sort?, order?, page?, per_page?, public_only?, fresh?",
     );
+  });
+
+  //? The index is the entry tool, so a filtered read keeps a full listing out of the
+  //* client's budget: one group object instead of the whole index, while `total`
+  //* still reports the full registry count so the caller can tell it is filtered.
+  it("restricts the index to one group with a case-insensitive match", async () => {
+    const output = await capabilitiesTool.handler({ group: "search" }, {
+      client: {} as never,
+      config: makeConfig(),
+      authFingerprint: "abc",
+    });
+    const snapshot = output.groups as Array<{ group: string; tools: Array<{ name: string }> }>;
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0]!.group).toBe("Search");
+    expect(snapshot[0]!.tools.map((tool) => tool.name).sort()).toEqual([
+      "github_search_code", "github_search_issues", "github_search_repos",
+    ]);
+    expect(output.total).toBe(allTools.length);
+  });
+
+  it("rejects an unknown group with a self-correcting valid-groups message", async () => {
+    await expect(
+      capabilitiesTool.handler({ group: "Nope" }, {
+        client: {} as never,
+        config: makeConfig(),
+        authFingerprint: "abc",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("valid groups:"),
+    });
   });
 });

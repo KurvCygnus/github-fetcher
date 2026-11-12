@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 
 export interface CapabilityEntry {
@@ -30,7 +31,7 @@ export function capabilityInputs(shape: z.ZodRawShape): CapabilityInput[] {
 //* Data-driven discovery index: one row per registered tool. The guard test
 //* fails when a tool is added without a row here, keeping capabilities complete.
 export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
-  github_capabilities: { group: "Meta", summary: "Task-grouped index of every tool; call this first when unsure which tool fits a job. Envelope: single object", signature: "none" },
+  github_capabilities: { group: "Meta", summary: "Task-grouped index of every tool; call this first when unsure which tool fits a job. Envelope: single object", signature: "group?" },
   github_rate_limit: { group: "Meta", summary: "Current quota per resource with reset times; call it when refused with 403/429. Envelope: single object", signature: "resource?, all?" },
   github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
   github_doctor: { group: "Meta", summary: "One-screen health check: token presence, opt-in identity, proxy reachability, cache state, and quota; call it first when calls fail unexpectedly. Envelope: single object", signature: "none" },
@@ -69,14 +70,19 @@ export const capabilitiesTool = defineTool({
   title: "GitHub capabilities",
   description:
     "Task-grouped index of every tool in this server. Call this first when unsure which tool fits a job; costs nothing. Returns {total, groups[{group, tools[{name, summary, signature, input}]}]}.",
-  inputSchema: {},
+  inputSchema: {
+    group: z
+      .string()
+      .optional()
+      .describe("Restrict the index to one group, e.g. Search or Files; groups are listed in the output"),
+  },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
-  async handler() {
+  async handler(input, _ctx) {
     //* The registry imports this module, so the tool list is pulled lazily at
     //* call time; an eager import would create a module-evaluation cycle
     //* (capabilitiesTool is a const inside the registry's array).
@@ -96,6 +102,22 @@ export const capabilitiesTool = defineTool({
         input: registered ? capabilityInputs(registered.inputSchema) : [],
       });
     }
-    return { total: Object.keys(CAPABILITY_GROUPS).length, groups };
+    //* `total` counts the full registry on every success path, filtered or not, so
+    //* a caller can always tell the index is a filtered view rather than the whole
+    //* server. The miss path names every valid group so an agent can self-correct
+    //* without a second discovery round.
+    const total = Object.keys(CAPABILITY_GROUPS).length;
+    if (input.group === undefined) {
+      return { total, groups };
+    }
+    const wanted = input.group.toLowerCase();
+    const matched = groups.find((candidate) => candidate.group.toLowerCase() === wanted);
+    if (!matched) {
+      throw new GithubError(
+        "invalid_params",
+        `unknown group ${input.group}; valid groups: ${groups.map((candidate) => candidate.group).join(", ")}`,
+      );
+    }
+    return { total, groups: [matched] };
   },
 });
