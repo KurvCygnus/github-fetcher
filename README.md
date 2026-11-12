@@ -7,7 +7,7 @@
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.19-blue)
 [![M8ven Trust](https://m8ven.ai/badge/mcp/kurvcygnus/github-fetcher)](https://m8ven.ai/mcp/kurvcygnus/github-fetcher?s=readme)
 
-AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 32 tools over stdio for reading repositories, users, files, commits, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, its own capability index and diagnostics, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
+AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 34 tools over stdio for reading repositories, users, files, commits, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, its own capability index and diagnostics, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
 
 ## Built for mainland China networks
 
@@ -32,7 +32,7 @@ Agents read GitHub constantly (trees, files, issues, pull requests, CI), and dir
 
 ## What you get
 
-- 32 read-only MCP tools over stdio: repositories, users, trees, files, commits, branches, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, user profiles, stars, and events, a capability discovery index with a self-diagnostic, search, Actions runs, and a generic read-only GET escape hatch.
+- 34 read-only MCP tools over stdio: repositories, users, trees, files, commits, branches, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, user profiles, stars, and events, a capability discovery index with a self-diagnostic, search, Actions runs, and a generic read-only GET escape hatch.
 - Token reuse from the git credential store: the server reads what your git credential helper already holds (for example the GitHub CLI or Git Credential Manager), so no new secrets land on disk. `GITHUB_TOKEN` takes precedence, and with no token at all it falls back to anonymous access (60 requests per hour).
 - Proxy routing built for hostile networks: in `auto` mode API requests go direct-first while `raw.githubusercontent.com` requests go proxy-first, with `always` and `direct` overrides. Proxy candidates are tried in order: `GITHUB_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, then your git proxy config.
 - An ETag disk cache that survives restarts: entries inside their TTL are served locally, expired entries are revalidated cheaply with `If-None-Match`/`If-Modified-Since`, and a 304 answer reuses the stored body instead of downloading it again.
@@ -164,7 +164,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 ## Limitations
 
 - Read-only by design: no writes, no GraphQL, no clone or archive tools.
-- 32 tools, not a complete GitHub API client; use `github_api_get` for read-only REST endpoints the dedicated tools do not cover.
+- 34 tools, not a complete GitHub API client; use `github_api_get` for read-only REST endpoints the dedicated tools do not cover.
 - Anonymous access is 60 requests per hour; code search requires a token.
 - No proxy is bundled; bring your own HTTP(S) proxy.
 - The cache stores response bodies on disk; do not use it on a shared account if that is unacceptable.
@@ -180,7 +180,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 
 ## How it works
 
-Every tool call becomes one GET against the GitHub REST API. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every API-reading tool except `github_rate_limit` accepts a `fresh` option that bypasses the cache for a single request; `github_api_get` responses are cached like every other tool; `github_capabilities` takes no input. Every network-backed response ends with `meta: {cache, age_s, quota}`. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
+Every tool call becomes one GET against the GitHub REST API. Tool results travel a single channel: the response carries `structuredContent` only, and the `content` array stays empty, so legacy text-only clients see an empty payload instead of a duplicated text rendering. A cache layer sits in front of it: entries younger than the endpoint TTL are served locally, expired entries are revalidated with ETag validators, and only successful responses are cached, so a not-found answer is never cached and surfaces as `not_found` every time. Every API-reading tool except `github_rate_limit` accepts a `fresh` option that bypasses the cache for a single request; `github_api_get` responses are cached like every other tool; `github_capabilities` takes no input. Every network-backed response ends with `meta: {cache, age_s, quota}`; on a cache hit, quota reflects the fetch that produced the cached body, and `age_s` tells you how old that body is. Below the cache, the HTTP layer picks a route per request, retries transport failures, waits out short rate-limit windows, and refreshes a rejected token once before failing.
 
 `stdio MCP → tool registry → GithubClient (ETag cache) → HttpClient (routing, proxy, retries) → GitHub REST`
 
@@ -207,15 +207,15 @@ Invalid values are ignored with a warning on stderr and the default applies.
 
 Agents receive the full input schema for every tool via `tools/list`; `github_capabilities` carries the same facts as derived per-tool input rows (name, optionality, description), so the index and the schema cannot drift apart. The groups match the index returned by `github_capabilities`.
 
-- Meta: `github_capabilities` (one-line summaries with `Envelope:` tags, plus per-tool derived `input` rows and an input signature), `github_rate_limit` (projects core and search by default; `all: true` expands to every bucket; identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; `pagination` carries the Link-header URLs; GraphQL unsupported), `github_doctor` (one-screen health check: token presence, opt-in identity, proxy reachability, cache state, and quota)
+- Meta: `github_capabilities` (one-line summaries with `Envelope:` tags, plus per-tool derived `input` rows and an input signature; `group` restricts the index to one group), `github_rate_limit` (projects core and search by default; `all: true` expands to every bucket; identity opt-in via `GITHUB_MCP_EXPOSE_IDENTITY`), `github_api_get` (arbitrary read-only GET on api.github.com; a query string in `path` and scalar `query` values; `pagination` carries the Link-header URLs; GraphQL unsupported), `github_doctor` (one-screen health check: token presence, opt-in identity, proxy reachability, cache state, and quota)
 - Repository: `github_repo` (reports `visibility`), `github_repos` (batch lookup of up to 20 repositories with per-item ok/error), `github_compare_refs` (ahead/behind counts, total commits, and up to 100 changed files with patches capped at 4000 characters), `github_branches`, `github_languages` (bytes per language, sorted descending), `github_contributors` (login, account type, and contribution count), `github_repo_activity` (pull, issue, commit, contributor, and release counts for a window, from core endpoints only, with truncation flags)
-- User: `github_user` (one profile: name, type, bio, company, location, blog, and follower counts), `github_user_repos` (a user's repositories with the house projection; `type` defaults to `owner`), `github_user_starred` (starred repositories with the `starred_at` time), `github_user_events` (public events only)
-- Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`; a timed-out recursive listing degrades to top-level entries with `degraded: true`; `summary_only: true` drops `entries` and returns `total_bytes` plus `top_dirs` instead), `github_file` (supports 1-based `start_line`/`end_line` ranges and a per-call `max_bytes` budget)
-- History: `github_commits`
+- User: `github_user` (one profile: name, type, bio, company, location, blog, and follower counts), `github_user_repos` (a user's repositories with the house projection; `type` defaults to `owner`; forks are dropped by default and `include_forks: true` keeps them; `min_stars` sets a star floor; `sort: stars` gathers up to 10 pages of 100 and ranks by stars descending, reporting `gather_truncated` when the cap stopped the gather), `github_user_starred` (starred repositories with the `starred_at` time), `github_user_events` (public events only)
+- Files: `github_tree` (returns at most `max_entries` entries, default 1000, with `total_entries`, a type `summary`, and `api_truncated`; a timed-out recursive listing degrades to top-level entries with `degraded: true`; `summary_only: true` drops `entries` and returns `total_bytes` plus `top_dirs` instead), `github_file` (supports 1-based `start_line`/`end_line` ranges and a per-call `max_bytes` budget), `github_readme` (fetches the repository's README through GitHub's readme endpoint, which resolves the default naming variant; use `github_file` for a specific path)
+- History: `github_commits` (`max_message_chars` truncates each commit message)
 - Collaboration: `github_issue`, `github_issues` (accepts `since`, an ISO 8601 timestamp, to filter by update time), `github_pr`, `github_prs`
 - Releases: `github_release` (latest or tagged release with assets and download URLs; assets carry `digest` where GitHub provides one), `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (throttled breadth comparison of up to 20 repositories in one call)
-- Search: `github_search_repos` (reports `private`, `visibility`, `topics`, and `license` per item; `public_only` defaults to `true` — pass `false` to include private items — filters client-side, and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required), `github_search_issues`
+- Search: `github_search_repos` (reports `private`, `visibility`, `topics`, `license`, `created_at`, and `pushed_at` per item; `public_only` defaults to `true` — pass `false` to include private items — filters client-side, and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required), `github_search_issues`, `github_search_users` (user search by GitHub query syntax — `location:`, `language:`, `followers:>=N`, `repositories:>=N` qualifiers; lean profiles, with detail in `github_user`)
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## Troubleshooting
@@ -233,7 +233,7 @@ Agents receive the full input schema for every tool via `tools/list`; `github_ca
 - `npm test`: run the test suite
 - `npm run typecheck`: strict TypeScript check
 - `npm run build`: production build
-- `npm run smoke`: spawns the built server over stdio and asserts that all 32 tools are listed
+- `npm run smoke`: spawns the built server over stdio and asserts that all 34 tools are listed
 - `GITHUB_SMOKE=1 npm test`: runs the suite with `GITHUB_SMOKE` set; the variable is reserved and currently unused
 
 ## License

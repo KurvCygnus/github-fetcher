@@ -66,7 +66,7 @@ describe.skipIf(!canCheckLaunchKit)("launch kit", () => {
       expect(directories).toContain(target);
     }
     const facts = readFileSync(".superpowers/launch/facts.md", "utf8");
-    expect(facts).toContain("32 tools");
+    expect(facts).toContain("34 tools");
     expect(facts).toContain("60 requests/hour");
     expect(facts).toContain("5000 requests/hour");
     expect(existsSync(".superpowers/launch/metrics.md")).toBe(true);

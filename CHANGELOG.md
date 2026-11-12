@@ -17,13 +17,20 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_doctor` is a one-screen health check: token presence, opt-in identity, proxy reachability, cache state, and quota.
 - Every network-backed response ends with `meta: {cache, age_s, quota}` — cache state and age from the ETag cache, quota captured from the response headers (cache hits report the stored fetch's values); `github_capabilities` omits it.
 - `github_api_get` exposes Link pagination as `pagination: {next, prev, first, last}`.
-- `github_search_repos` items gain `topics` and `license` (spdx id).
+- `github_search_repos` items gain `topics`, `license` (spdx id), `created_at`, and `pushed_at`.
+- `github_capabilities` accepts `group` to restrict the index to one group (case-insensitive; an unknown name rejects with the valid groups listed).
+- `github_readme` fetches a repository's README through GitHub's readme endpoint, which resolves the default naming variant (`README.md`, `README.zh-CN.md`, and friends); use `github_file` for a specific path.
+- `github_search_users` searches users by GitHub query syntax (`location:`, `language:`, `followers:>=N`); items stay lean (`login`, `type`, `html_url`) because profile detail lives in `github_user`.
+- `github_user_repos` gains `include_forks` (default false, so forks are dropped unless asked for), `min_stars`, and a `stars` sort that gathers up to 10 pages of 100 client-side, ranks by stars descending, and reports `gather_truncated` when the cap stopped the gather.
+- `github_commits` accepts `max_message_chars` to truncate each commit message.
+- `github_compare_repos` documents its timing honestly: about 5 upstream calls per repository, roughly 10 repositories per minute, with the throttle riding the search quota.
 - `github_issues` accepts `since` (ISO 8601) to filter the list by update time.
 - Release assets carry `digest` where GitHub provides one.
 - `github_tree` degrades a timed-out recursive listing to top-level entries with `degraded: true`, and accepts `summary_only` to answer with `total_bytes` and `top_dirs` totals instead of an entries payload.
 
 ### Changed
 
+- Tool calls return `structuredContent` only: the `content` array stays empty, so legacy text-only clients see an empty payload instead of a duplicated text rendering.
 - `github_search_repos` now defaults to `public_only: true`; private repositories enter results only with an explicit `public_only: false`.
 - Truncation clips at real UTF-8 bytes, matching the `BYTES` name of the budget variables.
 - The `github_tree` hint names the cause: GitHub-side truncation suggests narrowing path/ref instead of raising `max_entries`.
