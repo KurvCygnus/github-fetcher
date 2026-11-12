@@ -43,6 +43,7 @@ export const SUBCOMMANDS = {
   "search-repos": { tool: "github_search_repos", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", "public-only": "boolean", ...REPO_FRESH } },
   "search-code": { tool: "github_search_code", positional: [{ key: "query", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "search-issues": { tool: "github_search_issues", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
+  "search-users": { tool: "github_search_users", positional: [{ key: "query", kind: "string" }], flags: { sort: "string", order: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   workflows: { tool: "github_workflows", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "workflow-runs": { tool: "github_workflow_runs", positional: [{ key: "repo", kind: "string" }], flags: { "workflow-id": "number", branch: "string", status: "string", event: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   "workflow-run": { tool: "github_workflow_run", positional: [{ key: "repo", kind: "string" }, { key: "run_id", kind: "number" }], flags: { "include-jobs": "boolean", ...REPO_FRESH } },

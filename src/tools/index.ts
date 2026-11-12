@@ -19,7 +19,7 @@ import { readmeTool } from "./readme.js";
 import { releaseTool, releasesTool } from "./releases.js";
 import { repoTool } from "./repo.js";
 import { reposBatchTool } from "./repos-batch.js";
-import { searchCodeTool, searchIssuesTool, searchReposTool } from "./search.js";
+import { searchCodeTool, searchIssuesTool, searchReposTool, searchUsersTool } from "./search.js";
 import { treeTool } from "./tree.js";
 import { userEventsTool, userReposTool, userStarredTool, userTool } from "./user.js";
 
@@ -40,6 +40,7 @@ export const tools: readonly ToolDefinition[] = [
   searchReposTool,
   searchCodeTool,
   searchIssuesTool,
+  searchUsersTool,
   workflowsTool,
   workflowRunsTool,
   workflowRunTool,

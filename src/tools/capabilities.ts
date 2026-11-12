@@ -61,6 +61,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_search_repos: { group: "Search", summary: "Repository search by GitHub query syntax; public_only defaults to true. Envelope: items[]", signature: "query, sort?, order?, page?, per_page?, public_only?, fresh?" },
   github_search_code: { group: "Search", summary: "Code search across GitHub; requires a token. Envelope: items[]", signature: "query, page?, per_page?, fresh?" },
   github_search_issues: { group: "Search", summary: "Issue and pull request search by GitHub query syntax. Envelope: items[]", signature: "query, sort?, order?, page?, per_page?, fresh?" },
+  github_search_users: { group: "Search", summary: "User search by GitHub query syntax — location, language, followers:>=N, repositories:>=N, fullname: qualifiers; profile detail lives in github_user. Envelope: items[]", signature: "query, sort?, order?, page?, per_page?, fresh?" },
   github_workflows: { group: "Actions", summary: "Actions workflow list for a repository. Envelope: items[]", signature: "repo, page?, per_page?, fresh?" },
   github_workflow_runs: { group: "Actions", summary: "Workflow run list, repo-wide or per workflow. Envelope: items[]", signature: "repo, workflow_id?, branch?, status?, event?, page?, per_page?, fresh?" },
   github_workflow_run: { group: "Actions", summary: "One workflow run with optional jobs and steps on demand. Envelope: single object", signature: "repo, run_id, include_jobs?, fresh?" },

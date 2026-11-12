@@ -65,7 +65,7 @@ describe("CAPABILITY_GROUPS", () => {
     const itemTools = [
       "github_branches", "github_commits", "github_issues", "github_prs", "github_releases",
       "github_workflows", "github_workflow_runs", "github_search_repos", "github_search_code",
-      "github_search_issues",
+      "github_search_issues", "github_search_users",
       //? Part 2 tools; every tag here is read off the summary in
       //* src/tools/capabilities.ts, not guessed.
       "github_user_repos", "github_user_starred", "github_user_events", "github_contributors",
@@ -148,6 +148,9 @@ describe("github_capabilities", () => {
     expect(rows.find((tool) => tool.name === "github_search_repos")?.signature).toBe(
       "query, sort?, order?, page?, per_page?, public_only?, fresh?",
     );
+    expect(rows.find((tool) => tool.name === "github_search_users")?.signature).toBe(
+      "query, sort?, order?, page?, per_page?, fresh?",
+    );
   });
 
   //? The index is the entry tool, so a filtered read keeps a full listing out of the
@@ -163,7 +166,7 @@ describe("github_capabilities", () => {
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0]!.group).toBe("Search");
     expect(snapshot[0]!.tools.map((tool) => tool.name).sort()).toEqual([
-      "github_search_code", "github_search_issues", "github_search_repos",
+      "github_search_code", "github_search_issues", "github_search_repos", "github_search_users",
     ]);
     expect(output.total).toBe(allTools.length);
   });

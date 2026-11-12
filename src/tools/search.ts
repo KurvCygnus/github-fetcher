@@ -46,6 +46,12 @@ interface IssueItem {
   pull_request?: unknown;
 }
 
+interface UserItem {
+  login: string;
+  type: string;
+  html_url: string;
+}
+
 export const searchReposTool = defineTool({
   name: "github_search_repos",
   title: "GitHub repository search",
@@ -221,6 +227,67 @@ export const searchIssuesTool = defineTool({
       updated_at: item.updated_at,
       html_url: item.html_url,
     }));
+    //? meta is spread after the search envelope so it stays the trailing key and
+    //* stays absent entirely when the client reported no cache outcome.
+    return {
+      ...searchEnvelope(
+        items,
+        data.total_count,
+        data.incomplete_results,
+        page,
+        perPage,
+        headers.get("link"),
+      ),
+      ...(meta !== undefined ? { meta } : {}),
+    };
+  },
+});
+
+export const searchUsersTool = defineTool({
+  name: "github_search_users",
+  title: "GitHub user search",
+  description:
+    "Search GitHub users by query syntax — location, language, followers:>=N, repositories:>=N, fullname: qualifiers. Costs 1 search call; the search quota is 30 requests per minute. Returns {total_count, incomplete_results, items[{login, type, html_url}], page, per_page, has_more, next_page}.",
+  inputSchema: {
+    query: z.string().describe("GitHub user search syntax, like location:china followers:>=10 repositories:>=8"),
+    sort: z.enum(["followers", "repositories", "joined"]).optional().describe("Sort field"),
+    order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
+    page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
+    per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
+    fresh: z.boolean().optional().describe("Bypass the local cache"),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  async handler(input, ctx) {
+    const page = input.page ?? 1;
+    const perPage = input.per_page ?? 20;
+    const query = githubQuery({
+      q: input.query,
+      sort: input.sort,
+      order: input.order,
+      page,
+      per_page: perPage,
+    });
+    const result = await ctx.client.api<SearchResponse<UserItem>>(
+      `/search/users${query}`,
+      { fresh: input.fresh, cacheTtlMs: 300_000 },
+    );
+    const { data, headers } = result;
+    const meta = responseMeta(result);
+    //* The lean cut is deliberate: upstream items also carry id, node_id,
+    //* avatar_url, and score, but profile detail belongs to github_user, so the
+    //* row keeps only the three keys an agent needs to pick and then fetch a user.
+    const items = data.items.map((user) => ({
+      login: user.login,
+      type: user.type,
+      html_url: user.html_url,
+    }));
+    //? /search/users works anonymously, unlike /search/code, so there is no
+    //* token gate here; the description only warns about the search quota.
     //? meta is spread after the search envelope so it stays the trailing key and
     //* stays absent entirely when the client reported no cache outcome.
     return {
