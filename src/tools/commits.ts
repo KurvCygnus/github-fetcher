@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { listEnvelope } from "./pagination.js";
-import { githubQuery, parseRepo } from "./util.js";
+import { githubQuery, parseRepo, truncateText } from "./util.js";
 
 interface CommitResponse {
   sha: string;
@@ -18,7 +18,7 @@ export const commitsTool = defineTool({
   name: "github_commits",
   title: "GitHub commits",
   description:
-    "List commits on a ref, optionally filtered by path, author, or date range. Returns short sha, message, author, and date. Returns {items[{sha, short_sha, message, author{name, email, login}, date, url}], page, per_page, has_more, next_page}.",
+    "List commits on a ref, optionally filtered by path, author, or date range. Returns short sha, message, author, and date; max_message_chars truncates each message. Returns {items[{sha, short_sha, message, author{name, email, login}, date, url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
@@ -28,6 +28,12 @@ export const commitsTool = defineTool({
     until: z.string().optional().describe("ISO 8601 upper bound"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
+    max_message_chars: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Truncate each commit message to this many characters"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -58,7 +64,10 @@ export const commitsTool = defineTool({
     const items = data.map((commit) => ({
       sha: commit.sha,
       short_sha: commit.sha.slice(0, 7),
-      message: commit.commit.message,
+      message:
+        input.max_message_chars === undefined
+          ? commit.commit.message
+          : truncateText(commit.commit.message, input.max_message_chars).text,
       author: {
         name: commit.commit.author.name,
         email: commit.commit.author.email,
