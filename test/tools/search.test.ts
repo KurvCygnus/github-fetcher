@@ -25,6 +25,8 @@ describe("github_search_repos", () => {
           stargazers_count: 100,
           forks_count: 10,
           language: "Rust",
+          created_at: "2010-06-01T00:00:00Z",
+          pushed_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
           html_url: "https://github.com/rust-lang/rust",
         },
@@ -47,6 +49,8 @@ describe("github_search_repos", () => {
           stars: 100,
           forks: 10,
           language: "Rust",
+          created_at: "2010-06-01T00:00:00Z",
+          pushed_at: "2024-01-01T00:00:00Z",
         },
       ],
     });
@@ -64,6 +68,8 @@ describe("github_search_repos", () => {
         stargazers_count: 1,
         forks_count: 0,
         language: null,
+        created_at: "2020-01-01T00:00:00Z",
+        pushed_at: "2026-11-01T00:00:00Z",
         updated_at: "2026-11-01T00:00:00Z",
         html_url: "https://github.com/o/public",
       },
@@ -74,6 +80,8 @@ describe("github_search_repos", () => {
         stargazers_count: 0,
         forks_count: 0,
         language: null,
+        created_at: "2021-02-01T00:00:00Z",
+        pushed_at: "2026-11-01T00:00:00Z",
         updated_at: "2026-11-01T00:00:00Z",
         html_url: "https://github.com/o/private",
       },
@@ -87,6 +95,8 @@ describe("github_search_repos", () => {
         language: "TypeScript",
         topics: ["mcp"],
         license: { spdx_id: "MIT" },
+        created_at: "2022-03-02T00:00:00Z",
+        pushed_at: "2026-11-02T00:00:00Z",
         updated_at: "2026-11-02T00:00:00Z",
         html_url: "https://github.com/o/inner",
       },
@@ -98,6 +108,8 @@ describe("github_search_repos", () => {
         stargazers_count: 3,
         forks_count: 2,
         language: "Go",
+        created_at: "2023-04-03T00:00:00Z",
+        pushed_at: "2026-11-03T00:00:00Z",
         updated_at: "2026-11-03T00:00:00Z",
         html_url: "https://github.com/o/plain",
       },
@@ -155,6 +167,21 @@ describe("github_search_repos", () => {
     const plain = items.find((item) => item.full_name === "o/plain");
     expect(plain?.topics).toEqual([]);
     expect(plain?.license).toBeNull();
+  });
+
+  it("carries created_at and pushed_at in repository items", async () => {
+    const client = clientWith(mixed);
+    const output = await searchReposTool.handler(
+      { query: "x", public_only: false },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const items = output.items as Array<{ full_name: string; created_at: string; pushed_at: string }>;
+    expect(items.map((item) => [item.full_name, item.created_at, item.pushed_at])).toEqual([
+      ["o/public", "2020-01-01T00:00:00Z", "2026-11-01T00:00:00Z"],
+      ["o/private", "2021-02-01T00:00:00Z", "2026-11-01T00:00:00Z"],
+      ["o/inner", "2022-03-02T00:00:00Z", "2026-11-02T00:00:00Z"],
+      ["o/plain", "2023-04-03T00:00:00Z", "2026-11-03T00:00:00Z"],
+    ]);
   });
 });
 

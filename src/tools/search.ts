@@ -22,6 +22,8 @@ interface RepoItem {
   topics?: string[];
   license?: { spdx_id: string | null } | null;
   updated_at: string;
+  created_at: string;
+  pushed_at: string;
   html_url: string;
 }
 
@@ -48,7 +50,7 @@ export const searchReposTool = defineTool({
   name: "github_search_repos",
   title: "GitHub repository search",
   description:
-    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see. Returns {total_count, incomplete_results, filtered_count, items[{full_name, description, private, visibility, stars, forks, language, topics, license, updated_at, html_url}], page, per_page, has_more, next_page}.",
+    "Search repositories by GitHub search syntax. Supports stars, forks, help-wanted-issues, and updated sorting. public_only defaults to true; pass false to include private repositories the token can see. Returns {total_count, incomplete_results, filtered_count, items[{full_name, description, private, visibility, stars, forks, language, topics, license, updated_at, created_at, pushed_at, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub repository search syntax, like stars:>100 language:rust"),
     sort: z.enum(["stars", "forks", "help-wanted-issues", "updated"]).optional().describe("Sort field: stars, forks, help-wanted-issues, or updated"),
@@ -91,6 +93,8 @@ export const searchReposTool = defineTool({
       topics: repo.topics ?? [],
       license: repo.license?.spdx_id ?? null,
       updated_at: repo.updated_at,
+      created_at: repo.created_at,
+      pushed_at: repo.pushed_at,
       html_url: repo.html_url,
     }));
     //* Private repositories the token can see enter raw GitHub search results;
