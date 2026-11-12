@@ -4,20 +4,17 @@ import { toGithubError } from "../core/errors.js";
 import type { ToolContext } from "../core/context.js";
 import type { ToolDefinition } from "../tools/define.js";
 
+//? Single-channel emission: clients read structuredContent, so a JSON text
+//? duplicate doubles the token cost and pushes large responses past client
+//? truncation budgets. content stays a required empty array per the SDK
+//? CallToolResult type; legacy text-only clients accept the empty payload.
 function success(data: Record<string, unknown>): CallToolResult {
-  return {
-    content: [{ type: "text", text: JSON.stringify(data) }],
-    structuredContent: data,
-  };
+  return { content: [], structuredContent: data };
 }
 
 function failure(error: unknown): CallToolResult {
   const known = toGithubError(error);
-  return {
-    isError: true,
-    content: [{ type: "text", text: JSON.stringify(known.toResult()) }],
-    structuredContent: known.toResult(),
-  };
+  return { content: [], isError: true, structuredContent: known.toResult() };
 }
 
 export function registerTools(
