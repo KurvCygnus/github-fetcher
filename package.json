@@ -1,6 +1,6 @@
 {
   "name": "@kurvcygnus/github-fetcher",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Read-only GitHub MCP server for AI agents, built for unreliable networks (especially mainland China): 34 tools, token reuse, proxy fallback, ETag cache, one-command setup.",
   "mcpName": "io.github.KurvCygnus/github-fetcher",
   "type": "module",

@@ -36,7 +36,7 @@ const server = JSON.parse(readFileSync("server.json", "utf8")) as {
 describe("package metadata", () => {
   it("identifies the published package and its registry name", () => {
     expect(pkg.name).toBe("@kurvcygnus/github-fetcher");
-    expect(pkg.version).toBe("0.2.1");
+    expect(pkg.version).toBe("0.3.0");
     expect(pkg.mcpName).toBe("io.github.KurvCygnus/github-fetcher");
     expect(pkg.publishConfig?.access).toBe("public");
     expect(pkg.author).toEqual({ name: "Kurv Cygnus", url: "https://github.com/KurvCygnus" });
@@ -85,7 +85,7 @@ describe("server.json", () => {
     expect(entry).toMatchObject({
       registryType: "npm",
       identifier: "@kurvcygnus/github-fetcher",
-      version: "0.2.1",
+      version: "0.3.0",
       transport: { type: "stdio" },
     });
     const env = entry.environmentVariables ?? [];

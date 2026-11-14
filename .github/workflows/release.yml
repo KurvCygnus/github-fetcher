@@ -152,7 +152,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           echo "Would run: npm publish --provenance --access public"
-          echo "Would run: gh release create v$VERSION --verify-tag --title \"v$VERSION - capabilities, compare, and client setup\" --notes-file release-notes.md"
+          echo "Would run: gh release create v$VERSION --verify-tag --title \"v$VERSION - result contracts, user domain, and cache observability\" --notes-file release-notes.md"
       - name: Publish to npm with OIDC
         if: (github.event_name == 'push' || inputs.dry_run == false) && steps.auth.outputs.fallback == 'false' && steps.published.outputs.exists == 'false'
         env:
@@ -174,5 +174,5 @@ jobs:
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "release v$VERSION already exists"
           else
-            gh release create "v$VERSION" --verify-tag --title "v$VERSION - capabilities, compare, and client setup" --notes-file release-notes.md
+            gh release create "v$VERSION" --verify-tag --title "v$VERSION - result contracts, user domain, and cache observability" --notes-file release-notes.md
           fi
