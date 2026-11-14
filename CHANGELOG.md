@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-14
 
 ### Added
 
@@ -35,7 +35,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Truncation clips at real UTF-8 bytes, matching the `BYTES` name of the budget variables.
 - The `github_tree` hint names the cause: GitHub-side truncation suggests narrowing path/ref instead of raising `max_entries`.
 - `github_rate_limit` defaults to projecting the core and search buckets; `all: true` restores every bucket (`resource` still wins when given).
-- `github_api_get`'s top-level `cache` and `cache_age_seconds` keys fold into the universal `meta` envelope (an unpublished Part 1 shape, reshaped freely at 0.3.0).
+- `github_api_get`'s top-level `cache` and `cache_age_seconds` keys fold into the universal `meta` envelope (an earlier, never-published shape, reshaped freely at 0.3.0).
 
 ### Fixed
 

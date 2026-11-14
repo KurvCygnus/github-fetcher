@@ -181,7 +181,7 @@ describe("HttpClient", () => {
     });
   });
 
-  //? Review round 1: redirect-policy rejections are deterministic, so the first occurrence
+  //? Redirect-policy rejections are deterministic, so the first occurrence
   //? must surface immediately — one fetch, no route sweep, no retry sleeps.
   it("does not retry a cross-origin redirect rejection", async () => {
     const fetchImpl = vi.fn(

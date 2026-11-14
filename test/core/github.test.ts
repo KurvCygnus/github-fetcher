@@ -284,8 +284,8 @@ describe("GithubClient", () => {
 
   it("serves a hit with quota undefined when the entry was stored without quota fields", async () => {
     const { client, get, clock, cache } = harness();
-    //* Part 1 wrote entries without quota fields; seeding the store directly
-    //* reproduces such an entry so no cache migration can be smuggled in.
+    //* The old format wrote entries without quota fields; seeding the store
+    //* directly reproduces such an entry so no cache migration can be smuggled in.
     const url = "https://api.github.com/repos/a/b";
     await cache.set(cacheKey(url, "test-fingerprint"), {
       version: 1,

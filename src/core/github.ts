@@ -41,8 +41,9 @@ function readQuota(headers: Headers): QuotaSnapshot | undefined {
   return { resource, remaining: parsed };
 }
 
-//* Stored pairs come from our own validated writes, but Part 1 entries predate the
-//* quota fields and a disk entry could still carry a broken number, so the pair is
+//* Stored pairs come from our own validated writes, but entries written before the
+//* quota fields existed predate them, and a disk entry could still carry a broken
+//* number, so the pair is
 //* re-checked before it is reported; a partial pair reports as unknown.
 function entryQuota(entry: CacheEntry): QuotaSnapshot | undefined {
   if (entry.quota_resource === undefined || entry.quota_resource === "" || entry.quota_remaining === undefined) {
@@ -218,8 +219,8 @@ export class GithubClient implements GitHubApi {
       cached.fetched_at = this.now();
       //* The 304's own quota headers describe the request that just revalidated
       //* the body, so they refresh the stored pair when present; otherwise the
-      //* stored pair is kept untouched (Part 1 entries stay quota-less until a
-      //* full refetch).
+      //* stored pair is kept untouched (entries from the old quota-less format
+      //* stay quota-less until a full refetch).
       const liveQuota = readQuota(response.headers);
       if (liveQuota !== undefined) {
         cached.quota_resource = liveQuota.resource;
