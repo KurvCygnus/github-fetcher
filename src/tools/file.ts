@@ -4,7 +4,7 @@ import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { resolveRef } from "./ref.js";
-import { encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
+import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
 
 interface ContentsResponse {
   type: string;
@@ -15,14 +15,6 @@ interface ContentsResponse {
   sha: string;
   content?: string;
   download_url: string | null;
-}
-
-function decodeUtf8(bytes: Uint8Array): string | null {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
 }
 
 export const fileTool = defineTool({

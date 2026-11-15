@@ -35,6 +35,16 @@ export function truncateText(text: string, max: number): { text: string; truncat
   return { text: clipToByteBudget(text, max), truncated: true };
 }
 
+//? decode() with fatal: true throws on invalid UTF-8; returning null instead
+//? lets each caller word its own unsupported error (file vs readme wording).
+export function decodeUtf8(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 //* GITHUB_MCP_MAX_FILE_BYTES and the per-call budgets promise bytes; the clip
 //* walks back over UTF-8 continuation bytes so a code point is never split.
 function clipToByteBudget(text: string, max: number): string {

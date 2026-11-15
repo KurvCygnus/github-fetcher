@@ -250,8 +250,8 @@ export const searchUsersTool = defineTool({
     "Search GitHub users by query syntax — location, language, followers:>=N, repositories:>=N, fullname: qualifiers. Costs 1 search call; the search quota is 30 requests per minute. Returns {total_count, incomplete_results, items[{login, type, html_url}], page, per_page, has_more, next_page}.",
   inputSchema: {
     query: z.string().describe("GitHub user search syntax, like location:china followers:>=10 repositories:>=8"),
-    sort: z.enum(["followers", "repositories", "joined"]).optional().describe("Sort field"),
-    order: z.enum(["asc", "desc"]).optional().describe("Sort order"),
+    sort: z.enum(["followers", "repositories", "joined"]).optional().describe("Sort field: followers, repositories, or joined"),
+    order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),

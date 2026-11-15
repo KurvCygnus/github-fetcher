@@ -3,7 +3,7 @@ import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
-import { parseRepo, truncateText } from "./util.js";
+import { decodeUtf8, parseRepo, truncateText } from "./util.js";
 
 //? The readme endpoint answers a single file object with the Contents payload
 //? shape; only the fields the handler consumes are typed.
@@ -14,14 +14,6 @@ interface ReadmeResponse {
   sha: string;
   size: number;
   path: string;
-}
-
-function decodeUtf8(bytes: Uint8Array): string | null {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
 }
 
 export const readmeTool = defineTool({

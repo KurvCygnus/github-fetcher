@@ -10,21 +10,37 @@ import { makeConfig } from "../helpers.js";
 
 interface CapturedTool {
   name: string;
+  config: CapturedConfig;
   run(input: unknown): Promise<CallToolResult>;
 }
 
+//? Mirrors the config shape registerTools passes through, so the passthrough
+//? assertions read the captured values directly instead of re-casting per test.
+interface CapturedConfig {
+  title: string;
+  description: string;
+  inputSchema: unknown;
+  annotations: {
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    idempotentHint: boolean;
+    openWorldHint: boolean;
+  };
+}
+
 //? The wiring only touches McpServer.registerTool, so the double captures the
-//? handler callback per tool name and is asserted to the parameter type; tests
-//? then drive the real success/failure paths through the registered callback.
+//? handler callback and the registered config per tool name and is asserted to
+//? the parameter types; tests then drive the real success/failure paths through
+//? the registered callback and pin the config passthrough.
 function serverDouble(): { captured: CapturedTool[]; server: McpServer } {
   const captured: CapturedTool[] = [];
   const server = {
     registerTool(
       name: string,
-      _config: unknown,
+      config: CapturedConfig,
       cb: (input: unknown) => Promise<CallToolResult>,
     ): void {
-      captured.push({ name, run: cb });
+      captured.push({ name, config, run: cb });
     },
   };
   return { captured, server: server as unknown as McpServer };
@@ -97,5 +113,19 @@ describe("registerTools transport shape", () => {
         error: { code: "rate_limited", message: "slow down", remaining: 0 },
       },
     });
+  });
+
+  it("pins the registered config: annotations and inputSchema pass through unchanged", () => {
+    const { captured, server } = serverDouble();
+    registerTools(server, [okTool], testCtx());
+    const found = captured.find((entry) => entry.name === "test_ok");
+    expect(found).toBeDefined();
+    const tool = found as CapturedTool;
+
+    //? registerTools copies each config key by hand, so a key silently dropped
+    //* from that spread (readOnlyHint drives client-side confirmation prompts)
+    //* would ship unnoticed; both keys are pinned exactly as the tool defined.
+    expect(tool.config.annotations.readOnlyHint).toBe(true);
+    expect(tool.config.inputSchema).toEqual(okTool.inputSchema);
   });
 });

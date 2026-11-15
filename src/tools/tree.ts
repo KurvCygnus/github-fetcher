@@ -47,7 +47,7 @@ export const treeTool = defineTool({
     path: z.string().optional().describe("Subdirectory path inside the ref"),
     recursive: z.boolean().optional().describe("Return the complete tree recursively"),
     max_entries: z.number().int().min(1).max(10000).optional().describe("Maximum entries returned, 1-10000, default 1000"),
-    summary_only: z.boolean().optional().describe("Omit entries and return total_bytes plus top_dirs for the full tree instead; max_entries is ignored"),
+    summary_only: z.boolean().optional().describe("Omit entries and return total_bytes plus top_dirs for the full tree instead; max_entries is ignored; use with recursive: true"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

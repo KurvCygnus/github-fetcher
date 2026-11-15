@@ -191,7 +191,7 @@ export const userReposTool = defineTool({
     user: z.string().regex(LOGIN_PATTERN).describe("GitHub user login, like octocat (alphanumerics and hyphens)"),
     type: z.enum(["all", "owner", "public", "private", "member"]).optional().describe("Filter by relationship to the user: all, owner, public, private, or member"),
     sort: z.enum(["created", "updated", "pushed", "full_name", "stars"]).optional().describe("Sort field: created, updated, pushed, full_name, or stars (stars ranks client-side)"),
-    order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc"),
+    order: z.enum(["asc", "desc"]).optional().describe("Sort order: asc or desc (ignored with sort: stars)"),
     min_stars: z.number().int().min(0).optional().describe("Keep repositories with at least this many stars (client-side filter)"),
     include_forks: z.boolean().optional().describe("Keep fork repositories in the results; defaults to false, pass true to include them"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
