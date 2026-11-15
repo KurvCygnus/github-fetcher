@@ -167,6 +167,7 @@ describe("github_capabilities", () => {
     expect(snapshot[0]!.group).toBe("Search");
     expect(snapshot[0]!.tools.map((tool) => tool.name).sort()).toEqual([
       "github_search_code", "github_search_issues", "github_search_repos", "github_search_users",
+      "github_trending",
     ]);
     expect(output.total).toBe(allTools.length);
   });
