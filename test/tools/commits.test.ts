@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
 import { commitsTool } from "../../src/tools/commits.js";
+import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { makeConfig } from "../helpers.js";
+
+//? The pin map is module state shared by every test in this file; a leftover
+//* entry from the pin cases would otherwise leak into the no-pin assertions.
+beforeEach(() => {
+  clearPinnedRef("o/r");
+});
 
 describe("github_commits", () => {
   it("maps commits and forwards filters", async () => {
@@ -121,5 +128,74 @@ describe("github_commits", () => {
     );
     const items = (output as { items: Array<{ message: string }> }).items;
     expect(items.map((item) => item.message)).toEqual([LONG_MESSAGE, SHORT_MESSAGE]);
+  });
+
+  it("anchors a ref-less listing to the pinned sha and reports pinned_sha", async () => {
+    //? Review focus: the commits request must carry the pinned SHA in its sha
+    //* query parameter, not the branch the pin was created from; the pin adds
+    //* no upstream call, so the listing stays a single request.
+    const link = '<https://api.github.com/repos/o/r/commits?page=2>; rel="next"';
+    const client = {
+      api: vi.fn(async () => ({
+        data: [
+          {
+            sha: "1234567890",
+            html_url: "https://github.com/o/r/commit/1234567890",
+            commit: {
+              message: "fix: thing",
+              author: { name: "A", email: "a@example.com", date: "2024-01-01T00:00:00Z" },
+            },
+            author: { login: "a" },
+          },
+        ],
+        headers: new Headers({ link }),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    setPinnedRef("o/r", "main", "abc123def456");
+    const output = await commitsTool.handler(
+      { repo: "o/r" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith(
+      "/repos/o/r/commits?sha=abc123def456&page=1&per_page=20",
+      { fresh: undefined, cacheTtlMs: 120_000 },
+    );
+    expect(output).toEqual({
+      items: [
+        {
+          sha: "1234567890",
+          short_sha: "1234567",
+          message: "fix: thing",
+          author: { name: "A", email: "a@example.com", login: "a" },
+          date: "2024-01-01T00:00:00Z",
+          url: "https://github.com/o/r/commit/1234567890",
+        },
+      ],
+      page: 1,
+      per_page: 20,
+      has_more: true,
+      next_page: 2,
+      pinned_sha: "abc123def456",
+      meta: { cache: "miss", calls: 1 },
+    });
+  });
+
+  it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
+    const client = twoCommitClient();
+    setPinnedRef("o/r", "main", "abc123def456");
+    const output = await commitsTool.handler(
+      { repo: "o/r", ref: "main" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith("/repos/o/r/commits?sha=main&page=1&per_page=20", {
+      fresh: undefined,
+      cacheTtlMs: 120_000,
+    });
+    expect("pinned_sha" in output).toBe(false);
   });
 });

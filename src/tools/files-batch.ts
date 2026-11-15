@@ -6,6 +6,7 @@ import { GithubError, toGithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import type { MetaSource } from "./meta.js";
 import { scarcestMeta } from "./meta.js";
+import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -169,7 +170,12 @@ export const filesBatchTool = defineTool({
   async handler(input, ctx) {
     const started = Date.now();
     const { owner, name } = parseRepo(input.repo);
-    const ref = await resolveRef(ctx.client, owner, name, input.ref, input.fresh);
+    //? Session pin honoring: an explicit ref always wins, a pinned sha is used
+    //* only when the caller omitted ref, and the pinned sha passes through
+    //* resolveRef untouched (no extra repo lookup). fresh never unpins.
+    const pinned = getPinnedRef(`${owner}/${name}`);
+    const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
+    const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
     const settled = await Promise.allSettled(
       input.paths.map((pathSpec) => fetchOne(ctx, owner, name, ref, pathSpec, input.fresh)),
     );
@@ -177,10 +183,11 @@ export const filesBatchTool = defineTool({
     //? Failed entries carry no client result, so only the fulfilled entries'
     //* observations feed the batch's scarcest meta; the call count still covers
     //* every attempt, including the ones that rejected. resolveRef issues its
-    //* repo request only when no explicit ref was passed (the truthy check
-    //* mirrors its guard exactly), so the count ends at paths.length or one more.
+    //* repo request only when neither an explicit ref nor a pin anchored the
+    //* batch (the truthy check mirrors its guard exactly), so the count ends at
+    //* paths.length or one more.
     const observations: MetaSource[] = [];
-    let calls = input.ref ? 0 : 1;
+    let calls = input.ref || pinned ? 0 : 1;
     settled.forEach((entry, index) => {
       if (entry.status === "fulfilled") {
         results.push(entry.value.item);
@@ -202,6 +209,10 @@ export const filesBatchTool = defineTool({
     return {
       results,
       elapsed_ms: Date.now() - started,
+      //? pinned_sha appears only when the batch was anchored by the session pin;
+      //* it trails the fixed keys and sits before meta, which stays the last key
+      //* and stays absent when no fulfilled entry reported a cache outcome.
+      ...(usedPinned !== undefined ? { pinned_sha: usedPinned } : {}),
       ...(meta !== undefined ? { meta } : {}),
     };
   },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
+import { getPinnedRef } from "./pin.js";
 import { listEnvelope } from "./pagination.js";
 import { githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -46,8 +47,15 @@ export const commitsTool = defineTool({
     const { owner, name } = parseRepo(input.repo);
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
+    //? Session pin honoring: the ref-taking read tools anchor ref-less reads to
+    //* the session pin; github_commits has no ref resolution of its own (the
+    //* ref travels as the sha query parameter), so the pinned sha fills that
+    //* parameter only when the caller omitted ref. An explicit ref always wins
+    //* and fresh never unpins; the pin itself adds no upstream call.
+    const pinned = getPinnedRef(`${owner}/${name}`);
+    const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const query = githubQuery({
-      sha: input.ref,
+      sha: input.ref ?? usedPinned ?? undefined,
       path: input.path,
       author: input.author,
       since: input.since,
@@ -76,10 +84,12 @@ export const commitsTool = defineTool({
       date: commit.commit.author.date,
       url: commit.html_url,
     }));
-    //? meta is spread after the list envelope so it stays the trailing key and
-    //* stays absent entirely when the client reported no cache outcome.
+    //? pinned_sha appears only when the listing was anchored by the session pin;
+    //* meta is spread after it so it stays the trailing key and stays absent
+    //* entirely when the client reported no cache outcome.
     return {
       ...listEnvelope(items, page, perPage, headers.get("link")),
+      ...(usedPinned !== undefined ? { pinned_sha: usedPinned } : {}),
       ...(meta !== undefined ? { meta } : {}),
     };
   },

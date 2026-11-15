@@ -33,6 +33,7 @@ export const SUBCOMMANDS = {
   prs: { tool: "github_prs", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", base: "string", head: "string", sort: "string", direction: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   release: { tool: "github_release", positional: [{ key: "repo", kind: "string" }, { key: "tag", kind: "string", required: false }], flags: { ...REPO_FRESH } },
   releases: { tool: "github_releases", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", "include-prereleases": "boolean", ...REPO_FRESH } },
+  "pin-ref": { tool: "github_pin_ref", positional: [{ key: "repo", kind: "string" }, { key: "ref", kind: "string", required: false }], flags: { unpin: "boolean" } },
   health: { tool: "github_repo_health", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", labels: "string-array", ...REPO_FRESH } },
   "compare-repos": { tool: "github_compare_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", ...REPO_FRESH } },
   user: { tool: "github_user", positional: [{ key: "user", kind: "string" }], flags: {} },

@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { GitHubApi } from "../../src/core/github.js";
 import { GithubError } from "../../src/core/errors.js";
+import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { treeTool } from "../../src/tools/tree.js";
 import { makeConfig } from "../helpers.js";
+
+const REPO = "octocat/Hello-World";
+
+//? The pin map is module state shared by every test in this file; a leftover
+//* entry from the pin cases would otherwise leak into the no-pin assertions.
+beforeEach(() => {
+  clearPinnedRef(REPO);
+});
 
 const fixture = {
   sha: "abc",
@@ -326,5 +335,48 @@ describe("github_tree", () => {
     expect(schema.safeParse({ repo: "o/r", max_entries: 0 }).success).toBe(false);
     expect(schema.safeParse({ repo: "o/r", max_entries: 10001 }).success).toBe(false);
     expect(schema.safeParse({ repo: "o/r", max_entries: 10000 }).success).toBe(true);
+  });
+
+  it("anchors a ref-less listing to the pinned sha and reports pinned_sha", async () => {
+    //? Review focus: the tree request URL must carry the pinned SHA, not the
+    //* branch the pin was created from; the sha also short-circuits the
+    //* default-branch lookup, so exactly one upstream call happens.
+    const client = {
+      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await treeTool.handler(
+      { repo: REPO, recursive: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/git/trees/abc123def456?recursive=1`,
+      { fresh: undefined, cacheTtlMs: 600_000 },
+    );
+    const snapshot = output as { ref: string; pinned_sha?: string; meta?: { calls: number } };
+    expect(snapshot.ref).toBe("abc123def456");
+    expect(snapshot.pinned_sha).toBe("abc123def456");
+    expect(snapshot.meta).toEqual({ cache: "miss", calls: 1 });
+  });
+
+  it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
+    const client = {
+      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", recursive: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/git/trees/main?recursive=1`,
+      { fresh: undefined, cacheTtlMs: 600_000 },
+    );
+    expect("pinned_sha" in output).toBe(false);
   });
 });

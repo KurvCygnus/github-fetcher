@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheStore } from "../../src/core/cache.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import { GithubClient } from "../../src/core/github.js";
 import type { HttpClient, HttpResponse } from "../../src/core/http.js";
 import { filesBatchTool } from "../../src/tools/files-batch.js";
 import { GithubError } from "../../src/core/errors.js";
+import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { makeClientWith, makeConfig } from "../helpers.js";
 
 const REPO = "octocat/Hello-World";
@@ -73,6 +74,12 @@ function httpResponse(status: number, body: string, headers: Record<string, stri
 }
 
 describe("github_files", () => {
+  //? The pin map is module state shared by every test in this file; a leftover
+  //* entry from the pin cases would otherwise leak into the no-pin assertions.
+  beforeEach(() => {
+    clearPinnedRef(REPO);
+  });
+
   it("reports per-item ok and error for a mixed batch without rejecting", async () => {
     const client = clientForRoutes({ "docs/notes.txt": contents("docs/notes.txt", "alpha\n") });
     const output = await filesBatchTool.handler(
@@ -361,5 +368,39 @@ describe("github_files", () => {
       ok: true,
       data: { path: "long.txt", sha: "sha1", size: 10, encoding: "utf-8", content: "aaaa", binary: false, truncated: true },
     });
+  });
+
+  it("anchors every path to the pinned sha and reports pinned_sha", async () => {
+    //? Review focus: each contents request URL must carry the pinned SHA, not
+    //* the branch the pin was created from; the sha also short-circuits the
+    //* default-branch lookup, so one path costs exactly one upstream call.
+    const client = clientForRoutes({ "a.txt": contents("a.txt", "alpha\n") });
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await filesBatchTool.handler({ repo: REPO, paths: ["a.txt"] }, ctxFor(client));
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.api).toHaveBeenCalledWith(`/repos/${REPO}/contents/a.txt?ref=abc123def456`, {
+      fresh: undefined,
+      cacheTtlMs: 300_000,
+    });
+    const items = output.results as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ ok: true });
+    expect(output.pinned_sha).toBe("abc123def456");
+    expect(output.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 12 }, calls: 1 });
+  });
+
+  it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
+    const client = clientForRoutes({ "a.txt": contents("a.txt", "alpha\n") });
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await filesBatchTool.handler(
+      { repo: REPO, paths: ["a.txt"], ref: "main" },
+      ctxFor(client),
+    );
+    expect(client.api).toHaveBeenCalledWith(`/repos/${REPO}/contents/a.txt?ref=main`, {
+      fresh: undefined,
+      cacheTtlMs: 300_000,
+    });
+    expect("pinned_sha" in output).toBe(false);
+    expect(output.meta).toMatchObject({ calls: 1 });
   });
 });

@@ -3,6 +3,7 @@ import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
+import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
 
@@ -63,12 +64,18 @@ export const fileGrepTool = defineTool({
     }
 
     const { owner, name } = parseRepo(input.repo);
-    const ref = await resolveRef(ctx.client, owner, name, input.ref, input.fresh);
+    //? Session pin honoring: an explicit ref always wins, a pinned sha is used
+    //* only when the caller omitted ref, and the pinned sha passes through
+    //* resolveRef untouched (no extra repo lookup). fresh never unpins.
+    const pinned = getPinnedRef(`${owner}/${name}`);
+    const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
+    const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
     const path = encodePath(input.path);
     //? Same count convention as github_file: resolveRef issues its repo request
-    //* only when no explicit ref was passed (the truthy check mirrors its guard),
-    //* and the contents read adds one more, so the count ends at 1 or 2.
-    const calls = (input.ref ? 0 : 1) + 1;
+    //* only when neither an explicit ref nor a pin anchored the search (the
+    //* truthy check mirrors its guard), and the contents read adds one more, so
+    //* the count ends at 1 or 2.
+    const calls = (input.ref || pinned ? 0 : 1) + 1;
     const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
       `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
@@ -168,6 +175,10 @@ export const fileGrepTool = defineTool({
       //? matches_truncated only appears when the cap stopped a scan that had more
       //* to give; the conditional spread keeps a clean result free of the key.
       ...(truncated ? { matches_truncated: true } : {}),
+      //? pinned_sha appears only when the search was anchored by the session pin;
+      //* it trails the fixed keys and sits before meta, which stays the last key
+      //* and stays absent when the client reported no cache outcome.
+      ...(usedPinned !== undefined ? { pinned_sha: usedPinned } : {}),
       ...(meta !== undefined ? { meta } : {}),
     };
   },

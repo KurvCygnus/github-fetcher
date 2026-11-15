@@ -1,10 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCacheStore } from "../../src/core/cache.js";
 import { GithubClient } from "../../src/core/github.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import type { HttpClient, HttpResponse } from "../../src/core/http.js";
 import { fileGrepTool } from "../../src/tools/file-grep.js";
+import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { makeConfig } from "../helpers.js";
+
+const REPO = "octocat/Hello-World";
+
+//? The pin map is module state shared by every test in this file; a leftover
+//* entry from the pin cases would otherwise leak into the no-pin assertions.
+beforeEach(() => {
+  clearPinnedRef(REPO);
+});
 
 function contents(path: string, text: string) {
   return {
@@ -210,5 +219,68 @@ describe("github_file_grep", () => {
     expect(first.meta).toMatchObject({ cache: "miss", calls: 1 });
     expect(second.meta).toMatchObject({ cache: "hit", calls: 1 });
     expect(second.matches).toEqual(first.matches);
+  });
+
+  it("anchors a ref-less search to the pinned sha and reports pinned_sha", async () => {
+    //? Review focus: the contents request URL must carry the pinned SHA, not the
+    //* branch the pin was created from; the sha also short-circuits the
+    //* default-branch lookup, so exactly one upstream call happens.
+    const client = clientForRoutes();
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await fileGrepTool.handler(
+      { repo: REPO, path: "notes.txt", pattern: "find" },
+      ctxFor(client),
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/contents/notes.txt?ref=abc123def456`,
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
+    expect(output).toEqual({
+      repo: REPO,
+      path: "notes.txt",
+      ref: "abc123def456",
+      pattern: "find",
+      total_lines: 10,
+      matches: [
+        {
+          line: 3,
+          column: 1,
+          line_text: "find me here",
+          context: [
+            { line: 1, text: "one" },
+            { line: 2, text: "two" },
+            { line: 4, text: "four" },
+            { line: 5, text: "five" },
+          ],
+        },
+        {
+          line: 7,
+          column: 6,
+          line_text: "also find me",
+          context: [
+            { line: 6, text: "six" },
+            { line: 8, text: "eight" },
+            { line: 9, text: "nine" },
+          ],
+        },
+      ],
+      pinned_sha: "abc123def456",
+      meta: { cache: "miss", calls: 1 },
+    });
+  });
+
+  it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
+    const client = clientForRoutes();
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await fileGrepTool.handler(
+      { repo: REPO, path: "notes.txt", pattern: "find", ref: "main" },
+      ctxFor(client),
+    );
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/contents/notes.txt?ref=main`,
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
+    expect("pinned_sha" in output).toBe(false);
   });
 });

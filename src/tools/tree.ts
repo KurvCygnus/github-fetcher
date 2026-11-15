@@ -3,6 +3,7 @@ import type { ApiResult } from "../core/github.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
+import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { encodePath, githubQuery, parseRepo } from "./util.js";
 
@@ -58,7 +59,12 @@ export const treeTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const ref = await resolveRef(ctx.client, owner, name, input.ref, input.fresh);
+    //? Session pin honoring: an explicit ref always wins, a pinned sha is used
+    //* only when the caller omitted ref, and the pinned sha passes through
+    //* resolveRef untouched (no extra repo lookup). fresh never unpins.
+    const pinned = getPinnedRef(`${owner}/${name}`);
+    const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
+    const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
     const treeish = input.path
       ? `${encodeURIComponent(ref)}:${encodePath(input.path)}`
       : encodeURIComponent(ref);
@@ -69,10 +75,11 @@ export const treeTool = defineTool({
         { fresh: input.fresh, cacheTtlMs: 600_000 },
       );
     };
-    //? resolveRef issues its repo request only when no explicit ref was passed;
-    //* the truthy check mirrors its guard exactly. Each tree fetch below adds
-    //* one more request, including a degraded retry after a timed-out first one.
-    let calls = input.ref ? 0 : 1;
+    //? resolveRef issues its repo request only when neither an explicit ref nor
+    //* a pin anchored the read (the truthy check mirrors its guard exactly).
+    //* Each tree fetch below adds one more request, including a degraded retry
+    //* after a timed-out first one.
+    let calls = input.ref || pinned ? 0 : 1;
     let tree: ApiResult<GitTreeResponse>;
     let degraded = false;
     try {
@@ -127,6 +134,9 @@ export const treeTool = defineTool({
       api_truncated: data.truncated,
       ...(hint === undefined ? {} : { hint }),
       ...(degraded ? { degraded: true } : {}),
+      //? pinned_sha appears only when the listing was anchored by the session
+      //* pin; it trails the base keys and stays absent for explicit-ref reads.
+      ...(usedPinned !== undefined ? { pinned_sha: usedPinned } : {}),
     };
     if (input.summary_only) {
       const totalBytes = all.reduce((sum, entry) => sum + (entry.size ?? 0), 0);

@@ -1,7 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
 import { fileTool } from "../../src/tools/file.js";
+import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { makeConfig } from "../helpers.js";
+
+const REPO = "octocat/Hello-World";
+
+//? The pin map is module state shared by every test in this file; a leftover
+//* entry from the pin cases would otherwise leak into the no-pin assertions.
+beforeEach(() => {
+  clearPinnedRef(REPO);
+});
 
 function contents(content: string) {
   return {
@@ -173,5 +182,62 @@ describe("github_file", () => {
       { client, config: makeConfig({ maxFileBytes: 4 }), authFingerprint: "abc" },
     );
     expect(output).toMatchObject({ content: "aaaa", truncated: true });
+  });
+
+  it("anchors a ref-less read to the pinned sha and reports pinned_sha", async () => {
+    //? Review focus: the contents request URL must carry the pinned SHA, not the
+    //* branch the pin was created from; the sha also short-circuits the
+    //* default-branch lookup, so exactly one upstream call happens.
+    const client = clientFor(contents("Hello World!\n"));
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await fileTool.handler(
+      { repo: REPO, path: "README.md" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/contents/README.md?ref=abc123def456`,
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
+    expect(output).toEqual({
+      repo: REPO,
+      path: "README.md",
+      ref: "abc123def456",
+      sha: "sha1",
+      size: 13,
+      encoding: "utf-8",
+      content: "Hello World!\n",
+      binary: false,
+      truncated: false,
+      start_line: 1,
+      end_line: 2,
+      total_lines: 2,
+      pinned_sha: "abc123def456",
+      meta: { cache: "miss", calls: 1 },
+    });
+  });
+
+  it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
+    const client = clientFor(contents("Hello World!\n"));
+    setPinnedRef(REPO, "main", "abc123def456");
+    const output = await fileTool.handler(
+      { repo: REPO, path: "README.md", ref: "main" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith(
+      `/repos/${REPO}/contents/README.md?ref=main`,
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
+    expect("pinned_sha" in output).toBe(false);
+  });
+
+  it("keeps the output free of pinned_sha when no pin exists", async () => {
+    const client = clientFor(contents("Hello World!\n"));
+    const output = await fileTool.handler(
+      { repo: REPO, path: "README.md", ref: "main" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect("pinned_sha" in output).toBe(false);
+    expect(client.api).toHaveBeenCalledTimes(1);
   });
 });
