@@ -24,6 +24,7 @@ import { repoTool } from "./repo.js";
 import { reposBatchTool } from "./repos-batch.js";
 import { searchCodeTool, searchIssuesTool, searchReposTool, searchUsersTool } from "./search.js";
 import { treeTool } from "./tree.js";
+import { userHealthTool } from "./user-health.js";
 import { userEventsTool, userReposTool, userStarredTool, userTool } from "./user.js";
 
 export const tools: readonly ToolDefinition[] = [
@@ -58,6 +59,7 @@ export const tools: readonly ToolDefinition[] = [
   userReposTool,
   userStarredTool,
   userEventsTool,
+  userHealthTool,
   languagesTool,
   contributorsTool,
   repoActivityTool,

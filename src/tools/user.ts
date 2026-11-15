@@ -57,12 +57,13 @@ interface EventResponse {
 
 //* GitHub logins are alphanumerics and hyphens, at most 39 characters; the same
 //* pattern guards the schema and the handler so ?/#/../ in a login can never
-//* reshape the request path (query, truncation, WHATWG normalization).
-const LOGIN_PATTERN = /^[A-Za-z0-9-]{1,39}$/;
+//* reshape the request path (query, truncation, WHATWG normalization). Exported
+//* for the sibling user tools that validate the same login shape.
+export const LOGIN_PATTERN = /^[A-Za-z0-9-]{1,39}$/;
 
 //? parseRepo house pattern: reject a malformed component early with
 //* invalid_params rather than encoding it into a wrong-but-silent read.
-function parseUser(login: string): string {
+export function parseUser(login: string): string {
   if (!LOGIN_PATTERN.test(login)) {
     throw new GithubError("invalid_params", "user must be a GitHub login (alphanumerics and hyphens, 1-39 characters)");
   }
@@ -157,8 +158,9 @@ interface GatherResult {
 //? Walks the repositories endpoint in upstream default order until the Link
 //* envelope runs out or the page cap stops the walk; each page's Link-derived
 //* next_page (the same parse listEnvelope reports) decides whether to continue,
-//* so a truncated gather is a prefix of the user's repositories.
-async function gatherRepos(
+//* so a truncated gather is a prefix of the user's repositories. Shared by
+//* github_user_repos's stars ranking and github_user_health's profiling walk.
+export async function gatherRepos(
   ctx: ToolContext,
   user: string,
   type: string | undefined,

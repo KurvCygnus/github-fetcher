@@ -40,6 +40,7 @@ export const SUBCOMMANDS = {
   "user-repos": { tool: "github_user_repos", positional: [{ key: "user", kind: "string" }], flags: { type: "string", sort: "string", order: "string", "min-stars": "number", "include-forks": "boolean", page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-starred": { tool: "github_user_starred", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-events": { tool: "github_user_events", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
+  "user-health": { tool: "github_user_health", positional: [{ key: "user", kind: "string" }], flags: { "include-forks": "boolean", "per-page": "number", ...REPO_FRESH } },
   contributors: { tool: "github_contributors", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   languages: { tool: "github_languages", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   "repo-activity": { tool: "github_repo_activity", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", ...REPO_FRESH } },
