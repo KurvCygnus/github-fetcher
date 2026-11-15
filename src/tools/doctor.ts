@@ -153,11 +153,15 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
 
       //? Identity mirrors github_rate_limit's opt-in: scopes come from the quota
       //* response's x-oauth-scopes header, and the login needs one extra best-effort
-      //* /user call, taken only when a token is actually configured.
+      //* /user call, taken only when a token is actually configured. That lookup
+      //* adds a second upstream request whenever it fires; a failed /user still
+      //* spent the request, so the count below stays exact either way.
+      let calls = 1;
       let identity: { authenticated_as: string | null; scopes: string[] } | undefined;
       if (ctx.config.exposeIdentity) {
         let authenticatedAs: string | null = null;
         if (ctx.authFingerprint !== "anonymous") {
+          calls += 1;
           try {
             const user = await ctx.client.api<{ login: string }>("/user", { cacheTtlMs: 300_000 });
             authenticatedAs = user.data.login;
@@ -172,7 +176,7 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
       //* is always a miss; the fallback keeps the envelope honest for callers that
       //* report no cache outcome at all. meta is spread last so it trails the
       //* fixed keys, and identity sits between token and proxy per the shape.
-      const meta = responseMeta({ cache: quotaCall.cache }) ?? { cache: "miss" as const };
+      const meta = responseMeta({ cache: quotaCall.cache }, calls) ?? { cache: "miss" as const, calls };
       return {
         token: { present: ctx.authFingerprint !== "anonymous" },
         ...(identity !== undefined ? { identity } : {}),

@@ -56,7 +56,9 @@ export const prTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data } = pullResponse;
-    const meta = responseMeta(pullResponse);
+    //? The PR read is one upstream call; include_files adds the single changed
+    //* files request, so the count ends at 1 or 2.
+    let calls = 1;
     const result: Record<string, unknown> = {
       number: data.number,
       title: data.title,
@@ -77,6 +79,7 @@ export const prTool = defineTool({
       html_url: data.html_url,
     };
     if (input.include_files) {
+      calls += 1;
       const files = await ctx.client.api<PullFileResponse[]>(
         `/repos/${owner}/${name}/pulls/${input.number}/files?per_page=100`,
         { fresh: input.fresh, cacheTtlMs: 120_000 },
@@ -91,8 +94,10 @@ export const prTool = defineTool({
       }));
       result.files_truncated = linkFor(files.headers, "next") !== null;
     }
-    //? meta is spread last on the single return path (with or without files) so
-    //* it trails the fixed keys and stays absent when no cache outcome exists.
+    //? meta is computed after the conditional files request so it can carry the
+    //* final call count, spread last on the single return path (with or without
+    //* files), and stays absent when no cache outcome exists.
+    const meta = responseMeta(pullResponse, calls);
     return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });
@@ -136,7 +141,7 @@ export const prsTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((pull) => ({
       number: pull.number,
       title: pull.title,

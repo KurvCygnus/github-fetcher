@@ -38,7 +38,7 @@ export const readmeTool = defineTool({
       cacheTtlMs: 300_000,
     });
     const { data } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
 
     let bytes: Uint8Array;
     if (data.encoding === "base64" && data.content !== undefined) {

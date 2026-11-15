@@ -93,7 +93,7 @@ describe("github_api_get", () => {
       truncated: true,
       hint: "response exceeded GITHUB_MCP_MAX_FILE_BYTES; narrow the query (e.g. per_page) or raise the limit",
       pagination: { next: null, prev: null, first: null, last: null },
-      meta: { cache: "hit", age_s: 12 },
+      meta: { cache: "hit", age_s: 12, calls: 1 },
     });
   });
 
@@ -231,7 +231,7 @@ describe("github_api_get", () => {
       body: { ok: true },
       truncated: false,
       pagination: { next: null, prev: null, first: null, last: null },
-      meta: { cache: "hit", age_s: 12 },
+      meta: { cache: "hit", age_s: 12, calls: 1 },
     });
   });
 

@@ -60,7 +60,7 @@ export const commitsTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((commit) => ({
       sha: commit.sha,
       short_sha: commit.sha.slice(0, 7),

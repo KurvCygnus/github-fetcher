@@ -71,7 +71,7 @@ export const releaseTool = defineTool({
       throw error;
     }
     const { data } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     return {
       found: true,
       tag_name: data.tag_name,
@@ -121,7 +121,7 @@ export const releasesTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 600_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     //* Filtering happens after the fetch, not in the query, so the Link header and
     //* thus has_more/next_page keep describing the upstream pages; callers stepping
     //* through next_page never silently skip a page that filtered to zero items.

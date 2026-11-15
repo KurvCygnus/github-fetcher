@@ -95,21 +95,24 @@ async function walkNewestFirst<T>(
 //* surfaces as an upstream GithubError, so that counts as a failed attempt too.
 //* The answering 200's client result travels beside the data for the scarcest
 //* meta report; a failed stats fetch contributes no result, like any rejected
-//* sub-request.
+//* sub-request. attempts counts every client invocation (a 202 retry spends a
+//* request without producing a result) so the handler can report exact calls.
 async function fetchStats<T>(
   ctx: ToolContext,
   path: string,
   fresh: boolean | undefined,
-): Promise<{ data: T | null; result: ApiResult<T> | undefined }> {
+): Promise<{ data: T | null; result: ApiResult<T> | undefined; attempts: number }> {
+  let attempts = 0;
   for (let attempt = 0; attempt < STATS_ATTEMPTS; attempt += 1) {
+    attempts += 1;
     try {
       const result = await ctx.client.api<T>(path, { fresh, cacheTtlMs: STATS_TTL_MS });
-      if (result.status === 200) return { data: result.data, result };
+      if (result.status === 200) return { data: result.data, result, attempts };
     } catch (error) {
       if (!(error instanceof GithubError)) throw error;
     }
   }
-  return { data: null, result: undefined };
+  return { data: null, result: undefined, attempts };
 }
 
 //* Median of merged pulls' (merged_at - created_at) hours; sorted, and for an
@@ -211,13 +214,20 @@ export const repoActivityTool = defineTool({
     //? Multi-request tool: the envelope reports the scarcest observation across
     //* every walk page and the answering stats calls (lowest remaining, tagged
     //* with its resource), staying undefined when nothing produced a result.
+    //* Each walk result entry is exactly one issued request and fetchStats
+    //* reports its own attempt count, so this sum is the batch's exact call count.
+    const calls = pulls.results.length
+      + issues.results.length
+      + releases.results.length
+      + participationS.attempts
+      + contributorStatsS.attempts;
     const meta = scarcestMeta([
       ...pulls.results,
       ...issues.results,
       ...releases.results,
       participationS.result,
       contributorStatsS.result,
-    ]);
+    ], calls);
 
     return {
       repo,

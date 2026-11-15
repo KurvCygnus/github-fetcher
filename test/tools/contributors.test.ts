@@ -36,7 +36,7 @@ describe("github_contributors", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -59,7 +59,7 @@ describe("github_contributors", () => {
       per_page: 5,
       has_more: true,
       next_page: 3,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -75,7 +75,7 @@ describe("github_contributors", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

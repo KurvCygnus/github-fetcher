@@ -30,7 +30,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
     expect(JSON.stringify(result)).not.toContain("abc123");
     expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
@@ -67,7 +67,7 @@ describe("github_rate_limit", () => {
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
         graphql: { limit: 50, remaining: 50, reset: "2023-11-14T22:14:10.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -147,7 +147,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
     expect(client.api).toHaveBeenCalledTimes(1);
     expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
@@ -167,7 +167,8 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      //? The identity opt-in adds the /user lookup, so this path spends two calls.
+      meta: { cache: "miss", calls: 2 },
     });
     expect(client.api).toHaveBeenCalledWith("/user", { cacheTtlMs: 300_000 });
     expect(JSON.stringify(result)).not.toContain("abc123");
@@ -209,7 +210,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
 
     const withQuota = {
@@ -234,7 +235,7 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss", quota: { resource: "core", remaining: 4990 } },
+      meta: { cache: "miss", quota: { resource: "core", remaining: 4990 }, calls: 1 },
     });
   });
 
@@ -252,8 +253,30 @@ describe("github_rate_limit", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z", used: 1 },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z", used: 0 },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
     expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  //? v0.4 meta.calls spot-check: github_rate_limit without the identity opt-in is
+  //* a single-call handler, so its meta reports exactly one upstream call.
+  it("reports the one quota call as meta.calls", async () => {
+    const client = {
+      api: vi.fn(async () => ({
+        data: fixture,
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await rateLimitTool.handler(
+      {},
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(output).toMatchObject({ meta: { cache: "miss", calls: 1 } });
   });
 });

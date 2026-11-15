@@ -3,10 +3,13 @@ import type { CacheOutcome, QuotaSnapshot } from "../core/github.js";
 //? The meta channel shared by every network-backed tool envelope: callers spread
 //? it last so `meta` is always the trailing key. Optional props spell out
 //? "undefined" (house pattern) because handlers pass schema-optional values.
+//? calls is the handler's exact upstream request count (attempts included), the
+//? v0.4 cost-certainty report; helpers omit the key when no count is passed.
 export interface ResponseMeta {
   cache: "hit" | "revalidated" | "miss";
   age_s?: number | undefined;
   quota?: QuotaSnapshot | undefined;
+  calls?: number | undefined;
 }
 
 //? Structural subset of ApiResult/RawApiResult, so any client result (or a test
@@ -20,13 +23,16 @@ export type MetaSource =
 //* nothing trustworthy to say about it, so it maps to undefined rather than a
 //* half-filled meta object. age_s exists only for hit/revalidated (a miss has no
 //* age by definition), and an unknown quota is omitted instead of zero-faked.
-export function responseMeta(result: MetaSource): ResponseMeta | undefined {
+//* calls rides along only when the handler passes its exact upstream request
+//* count; omitting the argument keeps the pre-0.4 meta shape byte for byte.
+export function responseMeta(result: MetaSource, calls?: number): ResponseMeta | undefined {
   if (result?.cache === undefined) return undefined;
   const outcome = result.cache;
   return {
     cache: outcome.state,
     ...(outcome.state !== "miss" && outcome.ageSeconds !== undefined ? { age_s: outcome.ageSeconds } : {}),
     ...(result.quota !== undefined ? { quota: result.quota } : {}),
+    ...(calls !== undefined ? { calls } : {}),
   };
 }
 
@@ -35,7 +41,10 @@ export function responseMeta(result: MetaSource): ResponseMeta | undefined {
 //* Ties keep the first observation, which keeps the output deterministic. When no
 //* result carries quota, the first defined responseMeta is still reported so the
 //* envelope keeps its cache state; an empty or all-undefined list maps to undefined.
-export function scarcestMeta(results: ReadonlyArray<MetaSource>): ResponseMeta | undefined {
+//* calls, when passed, is the handler's exact upstream request count across the
+//* whole batch (including attempts that produced no result); it is stamped onto
+//* the winning observation at the end so the selection logic stays untouched.
+export function scarcestMeta(results: ReadonlyArray<MetaSource>, calls?: number): ResponseMeta | undefined {
   let first: ResponseMeta | undefined;
   let scarcest: ResponseMeta | undefined;
   for (const result of results) {
@@ -50,5 +59,7 @@ export function scarcestMeta(results: ReadonlyArray<MetaSource>): ResponseMeta |
       scarcest = meta;
     }
   }
-  return scarcest ?? first;
+  const chosen = scarcest ?? first;
+  if (chosen === undefined) return undefined;
+  return calls === undefined ? chosen : { ...chosen, calls };
 }

@@ -55,7 +55,7 @@ describe("github_repo", () => {
       archived: false,
       pushed_at: "2024-01-02T00:00:00Z",
       created_at: "2011-01-26T19:01:12Z",
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

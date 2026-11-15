@@ -199,7 +199,7 @@ describe("github_repo_health", () => {
         }
         //? The client surfaces a 404 as GithubError("not_found"); the mock throws that
         //? real subclass because the handler matches by instanceof at the GithubClient
-        //? boundary, so a plain Error wearing a code property would be rethrown.
+        //* boundary, so a plain Error wearing a code property would be rethrown.
         throw new GithubError("not_found", "Not Found");
       }),
       apiRaw: vi.fn(),
@@ -216,5 +216,56 @@ describe("github_repo_health", () => {
       latest_release: null,
     });
     expect(client.api).toHaveBeenCalledWith("/repos/o/r/releases/latest", { fresh: undefined, cacheTtlMs: 600_000 });
+  });
+
+  //? v0.4 meta.calls spot-check: the batch is one repo payload + five window
+  //* searches + one search per label + one release attempt, so the default four
+  //* labels cost exactly 11 upstream calls and a single-label override costs 8.
+  it("reports its whole batch as meta.calls", async () => {
+    const client = {
+      api: vi.fn(async (url: string) => {
+        if (url === "/repos/o/r") {
+          return {
+            data: repoPayload,
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+          };
+        }
+        if (url === "/repos/o/r/releases/latest") {
+          return {
+            data: { tag_name: "v2.2.5", published_at: "2026-10-30T23:17:23Z", prerelease: false },
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+          };
+        }
+        if (url.startsWith("/search/issues?")) {
+          return {
+            data: { total_count: 1 },
+            headers: new Headers(),
+            status: 200,
+            contentType: "application/json",
+            cache: { state: "miss" },
+          };
+        }
+        throw new Error(`unexpected url ${url}`);
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await healthTool.handler(
+      { repo: "o/r" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ meta: { cache: "miss", calls: 11 } });
+
+    const singleLabel = await healthTool.handler(
+      { repo: "o/r", labels: ["bug"] },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(singleLabel).toMatchObject({ meta: { cache: "miss", calls: 8 } });
   });
 });

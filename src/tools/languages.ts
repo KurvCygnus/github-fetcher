@@ -28,7 +28,7 @@ export const languagesTool = defineTool({
       cacheTtlMs: 300_000,
     });
     const { data } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     //* The API's record arrives in no guaranteed order; entries are rebuilt into a
     //* fresh object in bytes-descending order so key insertion order is the sort.
     const sorted = Object.entries(data).sort(([, a], [, b]) => b - a);

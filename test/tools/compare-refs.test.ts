@@ -66,7 +66,7 @@ describe("github_compare_refs", () => {
         { filename: "src/a.ts", status: "modified", additions: 10, deletions: 2, patch: "@@ -1,2 +1,3 @@" },
         { filename: "src/b.ts", status: "added", additions: 5, deletions: 0, patch: null },
       ],
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

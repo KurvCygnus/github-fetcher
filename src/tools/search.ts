@@ -87,7 +87,7 @@ export const searchReposTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.items.map((repo) => ({
       full_name: repo.full_name,
       description: repo.description,
@@ -158,7 +158,7 @@ export const searchCodeTool = defineTool({
       },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.items.map((item) => ({
       repo: item.repository.full_name,
       path: item.path,
@@ -216,7 +216,7 @@ export const searchIssuesTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.items.map((item) => ({
       repo: item.repository_url.replace(/^https:\/\/api\.github\.com\/repos\//, ""),
       number: item.number,
@@ -277,7 +277,7 @@ export const searchUsersTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     //* The lean cut is deliberate: upstream items also carry id, node_id,
     //* avatar_url, and score, but profile detail belongs to github_user, so the
     //* row keeps only the three keys an agent needs to pick and then fetch a user.

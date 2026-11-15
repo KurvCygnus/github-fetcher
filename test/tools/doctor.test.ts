@@ -55,7 +55,7 @@ describe("github_doctor", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z" },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z" },
       },
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
     expect(probe).not.toHaveBeenCalled();
     expect(client.api).toHaveBeenCalledTimes(1);

@@ -120,7 +120,7 @@ describe("github_user", () => {
       following: 9,
       created_at: "2011-01-25T18:44:36Z",
       html_url: "https://github.com/octocat",
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -151,7 +151,7 @@ describe("github_user", () => {
       following: 0,
       created_at: "2011-01-25T18:44:36Z",
       html_url: "https://github.com/octocat",
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 });
@@ -227,7 +227,7 @@ describe("github_user_repos", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -333,7 +333,8 @@ describe("github_user_repos filters", () => {
     //* ranked window is [40, 25, 10, 7], so page 1 of the window is [40, 25].
     expect(namesOf(page1.items)).toEqual(["forty", "twenty-five"]);
     expect(page1).toMatchObject({ page: 1, per_page: 2, has_more: true, next_page: 2 });
-    expect(page1.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 47 } });
+    //? The gather walked pages 1-2, so the batch spent exactly two upstream calls.
+    expect(page1.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 47 }, calls: 2 });
     expect("gather_truncated" in page1).toBe(false);
 
     const page2 = await userReposTool.handler(
@@ -450,7 +451,7 @@ describe("github_user_starred", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 });
@@ -486,7 +487,7 @@ describe("github_user_events", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -502,7 +503,7 @@ describe("github_user_events", () => {
       per_page: 20,
       has_more: false,
       next_page: null,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 });

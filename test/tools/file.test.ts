@@ -46,7 +46,7 @@ describe("github_file", () => {
       start_line: 1,
       end_line: 2,
       total_lines: 2,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

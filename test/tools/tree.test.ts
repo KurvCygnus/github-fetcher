@@ -47,7 +47,7 @@ describe("github_tree", () => {
       returned_entries: 4,
       summary: { files: 1, dirs: 1, symlinks: 1, submodules: 1 },
       api_truncated: false,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 
@@ -302,7 +302,7 @@ describe("github_tree", () => {
       top_dirs: [{ path: "src", files: 1, bytes: 42 }],
       truncated: false,
       api_truncated: false,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
     expect("entries" in output).toBe(false);
     expect("returned_entries" in output).toBe(false);

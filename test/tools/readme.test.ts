@@ -57,7 +57,7 @@ describe("github_readme", () => {
       content: "Hello World!\n",
       binary: false,
       truncated: false,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

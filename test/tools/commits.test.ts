@@ -52,7 +52,7 @@ describe("github_commits", () => {
       per_page: 1,
       has_more: true,
       next_page: 2,
-      meta: { cache: "miss" },
+      meta: { cache: "miss", calls: 1 },
     });
   });
 

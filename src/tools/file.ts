@@ -41,12 +41,16 @@ export const fileTool = defineTool({
     const { owner, name } = parseRepo(input.repo);
     const ref = await resolveRef(ctx.client, owner, name, input.ref, input.fresh);
     const path = encodePath(input.path);
+    //? resolveRef issues its repo request only when no explicit ref was passed;
+    //* the truthy check mirrors its guard exactly. The contents read adds one
+    //* more request, so the count ends at 1 or 2.
+    const calls = (input.ref ? 0 : 1) + 1;
     const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
       `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
     const { data } = contents;
-    const meta = responseMeta(contents);
+    const meta = responseMeta(contents, calls);
     if (Array.isArray(data)) {
       throw new GithubError("invalid_params", "path points to a directory; use github_tree");
     }

@@ -36,6 +36,9 @@ function delay(ms: number): Promise<void> {
 interface CompareOneOutcome {
   item: Record<string, unknown>;
   results: MetaSource[];
+  //* Client invocations this repo spent: the four-request first volley plus the
+  //* release attempt, or fewer when a parse or first-volley error fired early.
+  attempts: number;
 }
 
 async function compareOne(
@@ -44,9 +47,13 @@ async function compareOne(
   windowStart: string,
   fresh: boolean | undefined,
 ): Promise<CompareOneOutcome> {
+  let attempts = 0;
   try {
     const { owner, name } = parseRepo(repoSpec);
     const repo = `${owner}/${name}`;
+    //* The volley's initializer issues all four requests before Promise.all can
+    //* reject, so counting them upfront stays exact even when one of them fails.
+    attempts += 4;
     const [payload, openIssuesS, openPrsS, closedS] = await Promise.all([
       ctx.client.api<RepoPayload>(`/repos/${owner}/${name}`, { fresh, cacheTtlMs: 600_000 }),
       safeCount(ctx, `repo:${repo} is:issue state:open`, fresh),
@@ -55,6 +62,9 @@ async function compareOne(
     ]);
     let latestRelease: LatestRelease | null = null;
     let releaseResult: ApiResult<LatestRelease> | undefined;
+    //* The release request is attempted for every repo that cleared the volley;
+    //* its 404 degrade still spent the request, so it counts either way.
+    attempts += 1;
     try {
       const result = await ctx.client.api<LatestRelease>(
         `/repos/${owner}/${name}/releases/latest`,
@@ -85,13 +95,15 @@ async function compareOne(
     return {
       item,
       results: [payload, openIssuesS.result, openPrsS.result, closedS.result, releaseResult],
+      attempts,
     };
   } catch (error) {
     //* One bad repo must not kill the batch: a GithubError becomes an error item
     //* while anything unexpected propagates. The failed repo produced no complete
-    //* result set, so it contributes no meta observations either.
+    //* result set, so it contributes no meta observations either — but the
+    //* requests it did spend still count toward the batch's call total.
     if (error instanceof GithubError) {
-      return { item: { repo: repoSpec, error: { code: error.code, message: error.message } }, results: [] };
+      return { item: { repo: repoSpec, error: { code: error.code, message: error.message } }, results: [], attempts };
     }
     throw error;
   }
@@ -119,6 +131,7 @@ export const compareReposTool = defineTool({
     const windowStart = windowStartDate(new Date(), windowDays);
     const repos: Array<Record<string, unknown>> = [];
     const observations: MetaSource[] = [];
+    let calls = 0;
     //? entries() (not indexed access) because noUncheckedIndexedAccess types
     //? input.repos[index] as string | undefined.
     for (const [index, repo] of input.repos.entries()) {
@@ -126,10 +139,12 @@ export const compareReposTool = defineTool({
       const outcome = await compareOne(ctx, repo, windowStart, input.fresh);
       repos.push(outcome.item);
       observations.push(...outcome.results);
+      calls += outcome.attempts;
     }
     //? Multi-request tool: one scarcest meta for the whole batch, taken across
-    //* every repo's request results (lowest remaining, tagged with its resource).
-    const meta = scarcestMeta(observations);
+    //* every repo's request results (lowest remaining, tagged with its resource)
+    //* and stamped with the batch's exact upstream call count.
+    const meta = scarcestMeta(observations, calls);
     return {
       window_days: windowDays,
       repos,

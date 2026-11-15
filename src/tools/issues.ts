@@ -86,9 +86,13 @@ export const issueTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data } = issueResponse;
-    const meta = responseMeta(issueResponse);
+    //? The issue read is one upstream call; include_comments adds the newest
+    //* comments page plus every older page the backwards walk needs to reach
+    //* the requested limit, so the count tracks each client invocation below.
+    let calls = 1;
     const result: Record<string, unknown> = issueFields(data, ctx.config.maxFileBytes);
     if (input.include_comments) {
+      calls += 1;
       const first = await ctx.client.api<CommentResponse[]>(
         `/repos/${owner}/${name}/issues/${input.number}/comments?per_page=100`,
         { fresh: input.fresh, cacheTtlMs: 120_000 },
@@ -102,6 +106,7 @@ export const issueTool = defineTool({
         const collected: CommentResponse[] = [];
         let page: string | null = lastPage;
         while (page !== null && collected.length < limit) {
+          calls += 1;
           const response = await ctx.client.api<CommentResponse[]>(page, {
             fresh: input.fresh,
             cacheTtlMs: 120_000,
@@ -122,8 +127,10 @@ export const issueTool = defineTool({
       }));
       result.comments_truncated = data.comments > latest.length;
     }
-    //? meta is spread last on the single return path (with or without comments)
-    //* so it trails the fixed keys and stays absent when no cache outcome exists.
+    //? meta is computed after the conditional comments requests so it can carry
+    //* the final call count, spread last on the single return path (with or
+    //* without comments), and stays absent when no cache outcome exists.
+    const meta = responseMeta(issueResponse, calls);
     return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });
@@ -172,7 +179,7 @@ export const issuesTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const mapped = data.map((issue) => ({
       number: issue.number,
       title: issue.title,

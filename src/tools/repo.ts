@@ -45,7 +45,7 @@ export const repoTool = defineTool({
       cacheTtlMs: 600_000,
     });
     const { data } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     return {
       full_name: data.full_name,
       description: data.description,

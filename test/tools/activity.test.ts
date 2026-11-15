@@ -177,7 +177,8 @@ describe("github_repo_activity", () => {
       issues_truncated: false,
       releases_truncated: false,
       stats_unavailable: false,
-      meta: { cache: "miss" },
+      //? Three pull pages + one issue page + one release page + two stats calls.
+      meta: { cache: "miss", calls: 7 },
     });
     //? The pull walk stopped inside page 3, so page 4 must never be requested.
     expect(callsFor(client, "/repos/o/r/pulls")).toHaveLength(3);
@@ -246,7 +247,9 @@ describe("github_repo_activity", () => {
       issues_truncated: false,
       releases_truncated: false,
       stats_unavailable: false,
-      meta: { cache: "miss" },
+      //? The cap stopped the pulls walk at ten pages + one issue page + one
+      //* release page + two stats calls.
+      meta: { cache: "miss", calls: 14 },
     });
     expect(callsFor(client, "/repos/o/r/pulls")).toHaveLength(10);
   });

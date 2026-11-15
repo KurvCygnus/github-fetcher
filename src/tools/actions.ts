@@ -87,7 +87,7 @@ export const workflowsTool = defineTool({
       cacheTtlMs: 300_000,
     });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.workflows.map((workflow) => ({
       id: workflow.id,
       name: workflow.name,
@@ -144,7 +144,7 @@ export const workflowRunsTool = defineTool({
       workflow_runs: WorkflowRunResponse[];
     }>(path, { fresh: input.fresh, cacheTtlMs: 60_000 });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.workflow_runs.map(runFields);
     //? meta is spread after the list envelope so it stays the trailing key and
     //* stays absent entirely when the client reported no cache outcome.
@@ -180,9 +180,12 @@ export const workflowRunTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 60_000 },
     );
     const { data } = runResponse;
-    const meta = responseMeta(runResponse);
+    //? The run read is one upstream call; include_jobs adds the single jobs
+    //* request, so the count ends at 1 or 2.
+    let calls = 1;
     const result: Record<string, unknown> = runFields(data);
     if (input.include_jobs) {
+      calls += 1;
       const jobs = await ctx.client.api<{ jobs: JobResponse[] }>(
         `/repos/${owner}/${name}/actions/runs/${input.run_id}/jobs?per_page=100`,
         { fresh: input.fresh, cacheTtlMs: 60_000 },
@@ -203,8 +206,10 @@ export const workflowRunTool = defineTool({
       }));
       result.jobs_truncated = linkFor(jobs.headers, "next") !== null;
     }
-    //? meta is spread last on the single return path (with or without jobs) so
-    //* it trails the fixed keys and stays absent when no cache outcome exists.
+    //? meta is computed after the conditional jobs request so it can carry the
+    //* final call count, spread last on the single return path (with or without
+    //* jobs), and stays absent when no cache outcome exists.
+    const meta = responseMeta(runResponse, calls);
     return { ...result, ...(meta !== undefined ? { meta } : {}) };
   },
 });

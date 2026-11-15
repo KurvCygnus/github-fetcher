@@ -69,19 +69,25 @@ export const treeTool = defineTool({
         { fresh: input.fresh, cacheTtlMs: 600_000 },
       );
     };
+    //? resolveRef issues its repo request only when no explicit ref was passed;
+    //* the truthy check mirrors its guard exactly. Each tree fetch below adds
+    //* one more request, including a degraded retry after a timed-out first one.
+    let calls = input.ref ? 0 : 1;
     let tree: ApiResult<GitTreeResponse>;
     let degraded = false;
     try {
+      calls += 1;
       tree = await fetchTree(input.recursive === true);
     } catch (error) {
       //* Degrade exactly once and only for a timed-out recursive listing; every
       //* other failure, including a second timeout on this retry, rethrows.
       if (!input.recursive || !isTimeoutError(error)) throw error;
+      calls += 1;
       tree = await fetchTree(false);
       degraded = true;
     }
     const data = tree.data;
-    const meta = responseMeta(tree);
+    const meta = responseMeta(tree, calls);
     const all = (data.tree ?? []).map((entry) => ({
       path: entry.path,
       type: normalizeType(entry),

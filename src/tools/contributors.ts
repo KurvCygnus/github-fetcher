@@ -38,7 +38,7 @@ export const contributorsTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((contributor) => ({
       login: contributor.login,
       type: contributor.type,

@@ -46,7 +46,7 @@ export const apiGetTool = defineTool({
     const response = await ctx.client.apiRaw(url, { fresh: input.fresh });
     const text = new TextDecoder("utf-8").decode(response.bytes);
     const clipped = truncateText(text, ctx.config.maxFileBytes);
-    const meta = responseMeta(response);
+    const meta = responseMeta(response, 1);
     //? Both exits share the envelope tail: pagination is always present (all
     //? four Link rels, null where the header lacks one), and the meta entry is
     //? spread last so `meta` trails the fixed keys and stays absent entirely

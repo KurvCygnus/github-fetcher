@@ -89,7 +89,7 @@ export const userTool = defineTool({
       cacheTtlMs: 300_000,
     });
     const { data } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     return {
       login: data.login,
       name: data.name ?? null,
@@ -223,8 +223,10 @@ export const userReposTool = defineTool({
       const hasMore = start + perPage < ranked.length;
       //? Multi-request mode: the scarcest observation across every gathered
       //* page (lowest remaining, tagged with its resource) is the honest worst
-      //* case, undefined when nothing produced a result.
-      const meta = scarcestMeta(gathered.results);
+      //* case, undefined when nothing produced a result. The gather issues
+      //* exactly one request per entry in results, so the batch's call count is
+      //* that length.
+      const meta = scarcestMeta(gathered.results, gathered.results.length);
       return {
         items: windowItems,
         page,
@@ -244,7 +246,7 @@ export const userReposTool = defineTool({
       cacheTtlMs: 120_000,
     });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     //? Passthrough mode: filters apply per page, so a filtered page can come
     //* back short while has_more/next_page stay Link-derived (the search
     //* public_only precedent, documented in the description).
@@ -286,7 +288,7 @@ export const userStarredTool = defineTool({
       accept: "application/vnd.github.star+json",
     });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((entry) => ({
       repo: entry.repo.full_name,
       stars: entry.repo.stargazers_count,
@@ -330,7 +332,7 @@ export const userEventsTool = defineTool({
       cacheTtlMs: 60_000,
     });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((event) => ({
       type: event.type,
       repo: event.repo.name,

@@ -47,7 +47,7 @@ export const compareRefsTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data } = compareResponse;
-    const meta = responseMeta(compareResponse);
+    const meta = responseMeta(compareResponse, 1);
     const allFiles = data.files ?? [];
     const files = allFiles.slice(0, MAX_FILES).map((file) => ({
       filename: file.filename,

@@ -42,7 +42,9 @@ export const rateLimitTool = defineTool({
   async handler(input, ctx) {
     const result = await ctx.client.api<RateLimitResponse>("/rate_limit", { cacheTtlMs: 0 });
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    //? The quota read is one upstream call; the opt-in identity lookup adds a
+    //* second one whenever it fires, and a failed /user still spent the request.
+    let calls = 1;
     const projection = Object.fromEntries(
       Object.entries(data.resources).map(([name, value]) => [
         name,
@@ -70,8 +72,10 @@ export const rateLimitTool = defineTool({
           );
     const auth = ctx.authFingerprint === "anonymous" ? "anonymous" : "token";
     if (!ctx.config.exposeIdentity) {
-      //? meta is spread last so it trails the fixed keys on every return path,
-      //* and stays absent entirely when the client reported no cache outcome.
+      //? meta is computed per return path so it carries the final call count,
+      //* spread last so it trails the fixed keys, and stays absent entirely when
+      //* the client reported no cache outcome.
+      const meta = responseMeta(result, calls);
       return { auth, resources, ...(meta !== undefined ? { meta } : {}) };
     }
     const scopes = parseScopes(headers.get("x-oauth-scopes"));
@@ -79,6 +83,7 @@ export const rateLimitTool = defineTool({
     //* the quota answer still goes out; the underlying error is never surfaced.
     let authenticatedAs: string | null = null;
     if (auth === "token") {
+      calls += 1;
       try {
         const user = await ctx.client.api<{ login: string }>("/user", { cacheTtlMs: 300_000 });
         authenticatedAs = user.data.login;
@@ -86,6 +91,7 @@ export const rateLimitTool = defineTool({
         authenticatedAs = null;
       }
     }
+    const meta = responseMeta(result, calls);
     return { auth, authenticated_as: authenticatedAs, scopes, resources, ...(meta !== undefined ? { meta } : {}) };
   },
 });

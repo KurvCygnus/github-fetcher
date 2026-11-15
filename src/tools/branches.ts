@@ -36,7 +36,7 @@ export const branchesTool = defineTool({
       { fresh: input.fresh, cacheTtlMs: 120_000 },
     );
     const { data, headers } = result;
-    const meta = responseMeta(result);
+    const meta = responseMeta(result, 1);
     const items = data.map((branch) => ({
       name: branch.name,
       sha: branch.commit.sha,

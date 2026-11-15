@@ -112,7 +112,12 @@ export const healthTool = defineTool({
 
     //? Multi-request tool: the envelope reports the scarcest observation across
     //* every request in the batch (lowest remaining, tagged with its resource),
-    //* staying undefined when no request produced a client result at all.
+    //* staying undefined when no request produced a client result at all. The
+    //* call count is exact on every response path: one repo payload + the five
+    //* window searches + one search per label + one release attempt (a search
+    //* or release that degraded to null still spent its request), and a rejected
+    //* Promise.all throws before any meta exists.
+    const calls = 1 + 5 + labels.length + 1;
     const meta = scarcestMeta([
       payload,
       openIssuesS.result,
@@ -122,7 +127,7 @@ export const healthTool = defineTool({
       closedS.result,
       ...labelCountS.map((entry) => entry.result),
       releaseResult,
-    ]);
+    ], calls);
 
     return {
       repo,
