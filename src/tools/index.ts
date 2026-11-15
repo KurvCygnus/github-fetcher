@@ -9,6 +9,7 @@ import { compareReposTool } from "./compare.js";
 import { compareRefsTool } from "./compare-refs.js";
 import { contributorsTool } from "./contributors.js";
 import { doctorTool } from "./doctor.js";
+import { fileGrepTool } from "./file-grep.js";
 import { fileTool } from "./file.js";
 import { healthTool } from "./health.js";
 import { issueTool, issuesTool } from "./issues.js";
@@ -28,6 +29,7 @@ export const tools: readonly ToolDefinition[] = [
   repoTool,
   treeTool,
   fileTool,
+  fileGrepTool,
   readmeTool,
   commitsTool,
   branchesTool,
