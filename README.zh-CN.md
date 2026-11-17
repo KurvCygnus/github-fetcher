@@ -215,7 +215,7 @@ Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_c
 - Collaboration: `github_issue`, `github_issues` (接受 `since`, 一个 ISO 8601 时间戳, 按更新时间过滤), `github_pr`, `github_prs`
 - Releases: `github_release` (最新或指定 tag 的 release, 含资产与下载链接; GitHub 提供时资产带 `digest`), `github_releases`
 - Snapshot: `github_repo_health`, `github_compare_repos` (一次调用对最多 20 个仓库做限速的横向对比)
-- Search: `github_search_repos` (每条结果报告 `private`, `visibility`, `topics`, `license`, `created_at` 和 `pushed_at`; `public_only` 默认为 `true` — 传 `false` 才包含私有仓库 — 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`, `github_search_users` (按 GitHub 查询语法搜索用户 — `location:`, `language:`, `followers:>=N` 等限定符; 返回精简档案, 详情见 `github_user`), `github_trending` (基于 GitHub 搜索计算的趋势近似, 不是 GitHub 的 trending 页面: rising 视角列出窗口内创建的仓库, active 视角列出窗口内有过 push 的仓库, 两者都按 star 数排序; 每次观察都会记录快照, 同一视角的重复调用会相对上一次快照报告 `stars_gained`; 消耗 1-2 次 search 调用)
+- Search: `github_search_repos` (每条结果报告 `private`, `visibility`, `topics`, `license`, `created_at` 和 `pushed_at`; `public_only` 默认为 `true` — 传 `false` 才包含私有仓库 — 在本地过滤并报告 `filtered_count`, `total_count` 保持 GitHub 的未过滤总数), `github_search_code` (需要 token), `github_search_issues`, `github_search_users` (按 GitHub 查询语法搜索用户 — `location:`, `language:`, `followers:>=N` 等限定符; 返回精简档案, 详情见 `github_user`), `github_trending` (基于 GitHub 搜索计算的趋势近似, 不是 GitHub 的 trending 页面: rising 视角列出窗口内创建的仓库, active 视角列出窗口内有过 push 的仓库, 两者都按 star 数排序; 每次观察都会记录快照, 同一视角的重复调用会相对上一次快照报告 `stars_gained`; 消耗 2 次 search 调用)
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
 ## 故障排查

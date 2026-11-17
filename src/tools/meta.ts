@@ -3,8 +3,8 @@ import type { CacheOutcome, QuotaSnapshot } from "../core/github.js";
 //? The meta channel shared by every network-backed tool envelope: callers spread
 //? it last so `meta` is always the trailing key. Optional props spell out
 //? "undefined" (house pattern) because handlers pass schema-optional values.
-//? calls is the handler's exact upstream request count (attempts included), the
-//? v0.4 cost-certainty report; helpers omit the key when no count is passed.
+//? calls is the handler's client invocation count (raw CDN fallbacks excluded),
+//? the v0.4 cost-certainty report; helpers omit the key when no count is passed.
 export interface ResponseMeta {
   cache: "hit" | "revalidated" | "miss";
   age_s?: number | undefined;
@@ -23,8 +23,8 @@ export type MetaSource =
 //* nothing trustworthy to say about it, so it maps to undefined rather than a
 //* half-filled meta object. age_s exists only for hit/revalidated (a miss has no
 //* age by definition), and an unknown quota is omitted instead of zero-faked.
-//* calls rides along only when the handler passes its exact upstream request
-//* count; omitting the argument keeps the pre-0.4 meta shape byte for byte.
+//* calls rides along only when the handler passes its client invocation count;
+//* omitting the argument keeps the pre-0.4 meta shape byte for byte.
 export function responseMeta(result: MetaSource, calls?: number): ResponseMeta | undefined {
   if (result?.cache === undefined) return undefined;
   const outcome = result.cache;
@@ -41,9 +41,10 @@ export function responseMeta(result: MetaSource, calls?: number): ResponseMeta |
 //* Ties keep the first observation, which keeps the output deterministic. When no
 //* result carries quota, the first defined responseMeta is still reported so the
 //* envelope keeps its cache state; an empty or all-undefined list maps to undefined.
-//* calls, when passed, is the handler's exact upstream request count across the
-//* whole batch (including attempts that produced no result); it is stamped onto
-//* the winning observation at the end so the selection logic stays untouched.
+//* calls, when passed, is the handler's client invocation count across the whole
+//* batch (including attempts that produced no result; raw CDN fallbacks
+//* excluded); it is stamped onto the winning observation at the end so the
+//* selection logic stays untouched.
 export function scarcestMeta(results: ReadonlyArray<MetaSource>, calls?: number): ResponseMeta | undefined {
   let first: ResponseMeta | undefined;
   let scarcest: ResponseMeta | undefined;

@@ -54,10 +54,25 @@ const NOW = () => new Date("2026-11-16T12:00:00Z");
 
 //? In-memory snapshot store standing in for the on-disk default, so no test
 //! ever touches the real filesystem; spies let the assertions see the keys.
-function memoryStore(prior: Record<string, SnapshotEntry> = {}) {
+//? deferWriteBack mirrors the default fs store's unsynchronized read-modify-
+//! write of one JSON file: the all-keys snapshot is taken BEFORE an await gap
+//! and the whole map is written back AFTER it, so two writes that overlap in
+//! time both read the same pre-state and the last writer loses the first one's
+//! key — exactly the last-writer-wins loss the real store suffers.
+function memoryStore(prior: Record<string, SnapshotEntry> = {}, options?: { deferWriteBack?: boolean }) {
   const entries = new Map<string, SnapshotEntry>(Object.entries(prior));
   const read = vi.fn(async (key: string) => entries.get(key));
   const write = vi.fn(async (key: string, entry: SnapshotEntry) => {
+    if (options?.deferWriteBack === true) {
+      const all: Record<string, SnapshotEntry> = Object.fromEntries(entries);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      entries.clear();
+      for (const [existingKey, existingEntry] of Object.entries(all)) {
+        entries.set(existingKey, existingEntry);
+      }
+      entries.set(key, entry);
+      return;
+    }
     entries.set(key, entry);
   });
   return { entries, read, write };
@@ -164,6 +179,26 @@ describe("github_trending", () => {
     });
     expect(store.read).toHaveBeenCalledWith("rising:any:weekly");
     expect(store.read).toHaveBeenCalledWith("active:any:weekly");
+  });
+
+  it("keeps both lens observations when a write resolves a tick later (write race)", async () => {
+    const client = searchClient({
+      "created:>2026-11-09 stars:>100": { data: searchPayload([repoItem("rising/one", 120)]) },
+      "pushed:>2026-11-09 stars:>100": { data: searchPayload([repoItem("active/one", 900)]) },
+    });
+    //? The default store read-modify-writes the whole snapshot file, so the two
+    //* lens writes must never overlap: with a deferred write-back, concurrent
+    //* Promise.all writes both snapshot the same pre-state and the last writer
+    //* wins with only its own key, silently dropping the other lens's
+    //* observation. Sequential awaits keep both keys.
+    const store = memoryStore({}, { deferWriteBack: true });
+    const tool = createTrendingTool(depsFor(store));
+    await tool.handler({}, { client, config: makeConfig(), authFingerprint: "abc" });
+    expect(store.write).toHaveBeenCalledTimes(2);
+    expect(store.entries.has("rising:any:weekly")).toBe(true);
+    expect(store.entries.has("active:any:weekly")).toBe(true);
+    expect(store.entries.get("rising:any:weekly")?.stars).toEqual({ "rising/one": 120 });
+    expect(store.entries.get("active:any:weekly")?.stars).toEqual({ "active/one": 900 });
   });
 
   it("gains stars_gained from an injected prior snapshot and flips source", async () => {

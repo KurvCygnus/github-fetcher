@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_trending` computes a trending approximation from GitHub search, NOT GitHub's trending page: a rising lens (repositories created inside the window) and an active lens (repositories pushed inside it), both star-sorted; every observation is snapshotted, so repeated calls with the same lens gain `stars_gained` against the previous snapshot.
 - `github_stargazers` lists a repository's stargazers with the `starred_at` time (star+json media type); pages run oldest-first, so paged calls build a star timeline.
 - `github_file` and `github_tree` not-found errors carry a recovery `hint` built from the local cache only, with no extra upstream calls: branch/tag advice for a ref miss, cached sibling names for a path miss.
-- Multi-request handlers report `meta.calls`, the exact upstream request count (attempts included), so a call's cost is readable from the response alone.
+- Network-backed handlers report `meta.calls`, the handler's client invocation count (raw CDN fallbacks excluded), so a call's cost is readable from the response alone: every single-request handler reports `calls: 1`, and multi-request handlers report their total.
 - Reads anchored by a `github_pin_ref` pin report `pinned_sha`; `github_file`, `github_tree`, `github_file_grep`, `github_files`, and `github_commits` anchor to the pin when no explicit `ref` is given.
 
 ### Changed

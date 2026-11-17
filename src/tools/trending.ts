@@ -127,7 +127,7 @@ export function createTrendingTool(deps?: TrendingDeps): ToolDefinition {
     name: "github_trending",
     title: "GitHub trending approximation",
     description:
-      "Compute a trending approximation from GitHub search, NOT GitHub's trending page: the rising lens lists repositories created inside the window above the star floor and the active lens lists repositories pushed inside the window, both sorted by stars. Star gains are not observable from search alone; every observation is snapshotted under the cache directory, and repeated calls with the same lens, language, and window gain stars_gained against the previous snapshot, so deltas accumulate across calls into real velocity. Costs 1-2 search calls against the 30 requests/minute search quota. Returns {window, language, lenses{rising, active}, rising_incomplete_results, active_incomplete_results, source}.",
+      "Compute a trending approximation from GitHub search, NOT GitHub's trending page: the rising lens lists repositories created inside the window above the star floor and the active lens lists repositories pushed inside the window, both sorted by stars. Star gains are not observable from search alone; every observation is snapshotted under the cache directory, and repeated calls with the same lens, language, and window gain stars_gained against the previous snapshot, so deltas accumulate across calls into real velocity. Costs 2 search calls against the 30 requests/minute search quota. Returns {window, language, lenses{rising, active}, rising_incomplete_results, active_incomplete_results, source}.",
     inputSchema: {
       window: z.enum(["daily", "weekly", "monthly"]).optional().describe("Lookback window for both lenses; daily is 1 day, weekly 7, monthly 30, default weekly"),
       language: z.string().optional().describe("Restrict both lenses to one language qualifier, like rust or typescript"),
@@ -209,14 +209,16 @@ export function createTrendingTool(deps?: TrendingDeps): ToolDefinition {
       };
 
       //? The fresh observation is recorded AFTER the prior read, so the next
-      //* call diffs against this moment; writes run concurrently per lens.
+      //* call diffs against this moment. The two writes run SEQUENTIALLY, not
+      //* in a Promise.all: the default store read-modify-writes the whole
+      //* snapshot file, so overlapping writes would both read the same
+      //* pre-state and the last writer's file would contain only its own key,
+      //* silently dropping the other lens's observation.
       const date = stamp.toISOString();
       const starsOf = (items: SearchRepoItem[]): Record<string, number> =>
         Object.fromEntries(items.map((item) => [item.full_name, item.stargazers_count]));
-      await Promise.all([
-        writeFresh(risingKey, { date, stars: starsOf(risingCall.data.items) }),
-        writeFresh(activeKey, { date, stars: starsOf(activeCall.data.items) }),
-      ]);
+      await writeFresh(risingKey, { date, stars: starsOf(risingCall.data.items) });
+      await writeFresh(activeKey, { date, stars: starsOf(activeCall.data.items) });
 
       const meta = scarcestMeta([risingCall, activeCall], 2);
       return {
