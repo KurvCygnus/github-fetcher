@@ -5,7 +5,7 @@ import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
-import { encodePath, githubQuery, parseRepo } from "./util.js";
+import { encodePath, githubQuery, notFoundWithHint, parseRepo } from "./util.js";
 
 type GitTreeType = "blob" | "tree" | "commit";
 
@@ -65,15 +65,34 @@ export const treeTool = defineTool({
     const pinned = getPinnedRef(`${owner}/${name}`);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
-    const treeish = input.path
-      ? `${encodeURIComponent(ref)}:${encodePath(input.path)}`
+    //? "." and "./" mean the repo root: they normalize to absent so the plain
+    //* ref listing is fetched instead of an encodePath rejection, and the call
+    //* counts and reports exactly like a path-less one. Deeper dot segments
+    //* and ".." stay strict; github_file keeps its own strict encodePath.
+    const normalizedPath = input.path === "." || input.path === "./" ? undefined : input.path;
+    const treeish = normalizedPath
+      ? `${encodeURIComponent(ref)}:${encodePath(normalizedPath)}`
       : encodeURIComponent(ref);
-    const fetchTree = (recursive: boolean) => {
+    const fetchTree = async (recursive: boolean): Promise<ApiResult<GitTreeResponse>> => {
       const query = githubQuery({ recursive: recursive ? "1" : undefined });
-      return ctx.client.api<GitTreeResponse>(
-        `/repos/${owner}/${name}/git/trees/${treeish}${query}`,
-        { fresh: input.fresh, cacheTtlMs: 600_000 },
-      );
+      try {
+        return await ctx.client.api<GitTreeResponse>(
+          `/repos/${owner}/${name}/git/trees/${treeish}${query}`,
+          { fresh: input.fresh, cacheTtlMs: 600_000 },
+        );
+      } catch (error) {
+        //? 404 recovery: hints come from the local cache only, so no upstream
+        //* call is added; non-404 errors and cache misses come back as the same
+        //* object, which keeps the timeout-degrade check below working.
+        throw await notFoundWithHint(error, {
+          cache: ctx.cache,
+          authFingerprint: ctx.authFingerprint,
+          owner,
+          name,
+          ref,
+          path: normalizedPath,
+        });
+      }
     };
     //? resolveRef issues its repo request only when neither an explicit ref nor
     //* a pin anchored the read (the truthy check mirrors its guard exactly).
@@ -127,7 +146,7 @@ export const treeTool = defineTool({
         : undefined;
     const base = {
       ref,
-      path: input.path ?? null,
+      path: normalizedPath ?? null,
       total_entries: all.length,
       summary,
       truncated,

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { createTokenResolver, defaultExecFile, tokenFingerprint } from "./auth.js";
 import { createCacheStore, defaultCacheDir } from "./cache.js";
+import type { CacheStore } from "./cache.js";
 import { loadConfig } from "./config.js";
 import type { Config } from "./config.js";
 import { GithubClient } from "./github.js";
@@ -14,6 +15,11 @@ export interface ToolContext {
   client: GitHubApi;
   config: Config;
   authFingerprint: string;
+  //? The client's cache store, exposed read-only to handlers for cache-only
+  //* 404 recovery hints. Optional so existing ctx literals stay valid; handlers
+  //* degrade to an undecorated error when it is absent, and a test can inject
+  //* any CacheStore (typically an in-memory one) here.
+  cache?: CacheStore | undefined;
 }
 
 export async function createToolContext(
@@ -31,5 +37,5 @@ export async function createToolContext(
   });
   const http = new HttpClient({ config, auth, proxy });
   const client = new GithubClient({ http, cache, config, authFingerprint: fingerprint });
-  return { client, config, authFingerprint: fingerprint };
+  return { client, config, authFingerprint: fingerprint, cache };
 }

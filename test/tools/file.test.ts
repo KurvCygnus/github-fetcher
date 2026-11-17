@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GithubError } from "../../src/core/errors.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import { fileTool } from "../../src/tools/file.js";
 import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
-import { makeConfig } from "../helpers.js";
+import { makeConfig, memoryCacheStore, seedCacheTree } from "../helpers.js";
 
 const REPO = "octocat/Hello-World";
 
@@ -239,5 +240,52 @@ describe("github_file", () => {
     );
     expect("pinned_sha" in output).toBe(false);
     expect(client.api).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("github_file 404 recovery hints", () => {
+  function failingClient(error: GithubError): GitHubApi {
+    return {
+      api: vi.fn(async () => {
+        throw error;
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+  }
+
+  it("decorates a path 404 with cached root siblings and makes no extra upstream calls", async () => {
+    //? The hint must come from the local cache only: the failing contents read
+    //* is the whole upstream cost, so exactly one api call is allowed here.
+    const store = memoryCacheStore();
+    await seedCacheTree(store, "abc", "https://api.github.com/repos/octocat/Hello-World/git/trees/main", {
+      tree: [{ path: "README.md" }, { path: "src" }, { path: "docs" }],
+    });
+    const client = failingClient(new GithubError("not_found", "Not Found", { status: 404 }));
+    const error = (await fileTool
+      .handler(
+        { repo: REPO, path: "gone.md", ref: "main" },
+        { client, config: makeConfig(), authFingerprint: "abc", cache: store },
+      )
+      .catch((caught: unknown) => caught)) as GithubError;
+    expect(error).toBeInstanceOf(GithubError);
+    expect(error.code).toBe("not_found");
+    expect(error.message).toBe("Not Found");
+    expect(error.details.status).toBe(404);
+    expect(error.details.hint).toBe(
+      'path "gone.md" not found at ref main; entries in repo root: README.md, src, docs',
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the untouched 404 when no tree listing is cached", async () => {
+    const notFound = new GithubError("not_found", "Not Found", { status: 404 });
+    const client = failingClient(notFound);
+    await expect(
+      fileTool.handler(
+        { repo: REPO, path: "gone.md", ref: "main" },
+        { client, config: makeConfig(), authFingerprint: "abc" },
+      ),
+    ).rejects.toBe(notFound);
   });
 });

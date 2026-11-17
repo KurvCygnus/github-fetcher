@@ -38,6 +38,35 @@ export function cacheKey(url: string, authFingerprint: string): string {
   return createHash("sha256").update(`${url}\0${authFingerprint}`).digest("hex");
 }
 
+//? Cache-only read for the 404 recovery hints: looks up one key, parses the
+//* stored body, and returns the listing's entry paths, or null when the key is
+//* missing, the body is not a tree listing, or the read itself fails. It never
+//* performs a network request — CacheStore is purely local storage.
+export async function readCachedTree(cache: CacheStore, key: string): Promise<string[] | null> {
+  let entry: CacheEntry | null;
+  try {
+    entry = await cache.get(key);
+  } catch {
+    return null;
+  }
+  if (entry === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(entry.body);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const tree = (parsed as { tree?: unknown }).tree;
+    if (!Array.isArray(tree)) return null;
+    const paths: string[] = [];
+    for (const item of tree) {
+      if (typeof item !== "object" || item === null) continue;
+      const path = (item as { path?: unknown }).path;
+      if (typeof path === "string") paths.push(path);
+    }
+    return paths;
+  } catch {
+    return null;
+  }
+}
+
 export function defaultCacheDir(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,

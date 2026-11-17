@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
+import type { ApiResult } from "../core/github.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
-import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
+import { decodeUtf8, encodePath, githubQuery, notFoundWithHint, parseRepo, truncateText } from "./util.js";
 
 interface ContentsResponse {
   type: string;
@@ -51,10 +52,25 @@ export const fileTool = defineTool({
     //* a pin anchored the read (the truthy check mirrors its guard exactly).
     //* The contents read adds one more request, so the count ends at 1 or 2.
     const calls = (input.ref || pinned ? 0 : 1) + 1;
-    const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
-      `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
-      { fresh: input.fresh, cacheTtlMs: 300_000 },
-    );
+    let contents: ApiResult<ContentsResponse | ContentsResponse[]>;
+    try {
+      contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
+        `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
+        { fresh: input.fresh, cacheTtlMs: 300_000 },
+      );
+    } catch (error) {
+      //? 404 recovery: sibling hints come from the local cache only, so this
+      //* never adds an upstream call; other codes and cache-less contexts
+      //* rethrow the original error object untouched.
+      throw await notFoundWithHint(error, {
+        cache: ctx.cache,
+        authFingerprint: ctx.authFingerprint,
+        owner,
+        name,
+        ref,
+        path: input.path,
+      });
+    }
     const { data } = contents;
     const meta = responseMeta(contents, calls);
     if (Array.isArray(data)) {

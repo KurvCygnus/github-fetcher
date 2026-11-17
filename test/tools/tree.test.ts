@@ -4,7 +4,7 @@ import type { GitHubApi } from "../../src/core/github.js";
 import { GithubError } from "../../src/core/errors.js";
 import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
 import { treeTool } from "../../src/tools/tree.js";
-import { makeConfig } from "../helpers.js";
+import { makeConfig, memoryCacheStore, seedCacheTree } from "../helpers.js";
 
 const REPO = "octocat/Hello-World";
 
@@ -378,5 +378,111 @@ describe("github_tree", () => {
       { fresh: undefined, cacheTtlMs: 600_000 },
     );
     expect("pinned_sha" in output).toBe(false);
+  });
+});
+
+describe("github_tree 404 recovery hints", () => {
+  function failingClient(error: GithubError): GitHubApi {
+    return {
+      api: vi.fn(async () => {
+        throw error;
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+  }
+
+  it("suggests checking the ref when the tree itself 404s at the ref", async () => {
+    const client = failingClient(new GithubError("not_found", "Not Found", { status: 404 }));
+    const error = (await treeTool
+      .handler(
+        { repo: REPO, ref: "nope" },
+        { client, config: makeConfig(), authFingerprint: "abc", cache: memoryCacheStore() },
+      )
+      .catch((caught: unknown) => caught)) as GithubError;
+    expect(error.code).toBe("not_found");
+    expect(error.details.hint).toBe("ref nope not found; check the branch or tag name");
+    //? The ref-level hint needs no cache read, so still exactly one upstream call.
+    expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  it("decorates a path-scoped tree 404 with parent-directory siblings", async () => {
+    const store = memoryCacheStore();
+    await seedCacheTree(store, "abc", "https://api.github.com/repos/octocat/Hello-World/git/trees/main:src", {
+      tree: [{ path: "index.ts" }, { path: "util.ts" }],
+    });
+    const client = failingClient(new GithubError("not_found", "Not Found", { status: 404 }));
+    const error = (await treeTool
+      .handler(
+        { repo: REPO, ref: "main", path: "src/missing.ts" },
+        { client, config: makeConfig(), authFingerprint: "abc", cache: store },
+      )
+      .catch((caught: unknown) => caught)) as GithubError;
+    expect(error.details.hint).toBe(
+      'path "src/missing.ts" not found at ref main; entries in src: index.ts, util.ts',
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the untouched 404 for a path miss with an empty cache", async () => {
+    const notFound = new GithubError("not_found", "Not Found", { status: 404 });
+    const client = failingClient(notFound);
+    await expect(
+      treeTool.handler(
+        { repo: REPO, ref: "main", path: "src/missing.ts" },
+        { client, config: makeConfig(), authFingerprint: "abc", cache: memoryCacheStore() },
+      ),
+    ).rejects.toBe(notFound);
+  });
+});
+
+describe("github_tree path normalization", () => {
+  function okClient(): GitHubApi {
+    return {
+      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+  }
+
+  it("normalizes a dot path to the root listing with path-less counting", async () => {
+    //? "." means the repo root: the request URL carries no path segment and the
+    //* call behaves like a path-less read, so meta.calls keeps the same logic.
+    const client = okClient();
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", path: "." },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
+      fresh: undefined,
+      cacheTtlMs: 600_000,
+    });
+    const snapshot = output as { path: string | null; meta?: { calls?: number } };
+    expect(snapshot.path).toBe(null);
+    expect(snapshot.meta).toEqual({ cache: "miss", calls: 1 });
+  });
+
+  it("normalizes a dot-slash path the same way", async () => {
+    const client = okClient();
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", path: "./" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
+      fresh: undefined,
+      cacheTtlMs: 600_000,
+    });
+    expect((output as { path: string | null }).path).toBe(null);
+  });
+
+  it("still rejects parent traversal paths before any upstream call", async () => {
+    const client = okClient();
+    await expect(
+      treeTool.handler(
+        { repo: REPO, ref: "main", path: ".." },
+        { client, config: makeConfig(), authFingerprint: "abc" },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_params" });
+    expect(client.api).not.toHaveBeenCalled();
   });
 });
