@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
 import { commitsTool } from "../../src/tools/commits.js";
 import { clearPinnedRef, setPinnedRef } from "../../src/tools/pin.js";
-import { makeConfig } from "../helpers.js";
+import { makeClientWith, makeConfig } from "../helpers.js";
 
 //? The pin map is module state shared by every test in this file; a leftover
 //* entry from the pin cases would otherwise leak into the no-pin assertions.
@@ -69,42 +69,29 @@ describe("github_commits", () => {
   const LONG_MESSAGE = "feat: a very long commit message body";
   const SHORT_MESSAGE = "fix: bug";
 
-  function twoCommitClient() {
-    //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
-    //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
-    return {
-      api: vi.fn(async () => ({
-        data: [
-          {
-            sha: "aaaaaaaaaa",
-            html_url: "https://github.com/o/r/commit/aaaaaaaaaa",
-            commit: {
-              message: LONG_MESSAGE,
-              author: { name: "A", email: "a@example.com", date: "2024-01-01T00:00:00Z" },
-            },
-            author: { login: "a" },
-          },
-          {
-            sha: "bbbbbbbbbb",
-            html_url: "https://github.com/o/r/commit/bbbbbbbbbb",
-            commit: {
-              message: SHORT_MESSAGE,
-              author: { name: "B", email: "b@example.com", date: "2024-01-02T00:00:00Z" },
-            },
-            author: null,
-          },
-        ],
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
-  }
+  const twoCommits = [
+    {
+      sha: "aaaaaaaaaa",
+      html_url: "https://github.com/o/r/commit/aaaaaaaaaa",
+      commit: {
+        message: LONG_MESSAGE,
+        author: { name: "A", email: "a@example.com", date: "2024-01-01T00:00:00Z" },
+      },
+      author: { login: "a" },
+    },
+    {
+      sha: "bbbbbbbbbb",
+      html_url: "https://github.com/o/r/commit/bbbbbbbbbb",
+      commit: {
+        message: SHORT_MESSAGE,
+        author: { name: "B", email: "b@example.com", date: "2024-01-02T00:00:00Z" },
+      },
+      author: null,
+    },
+  ];
 
   it("honors max_message_chars by clipping long messages and leaving short ones intact", async () => {
-    const client = twoCommitClient();
+    const client = makeClientWith(twoCommits);
     const output = await commitsTool.handler(
       { repo: "o/r", max_message_chars: 10 },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -121,7 +108,7 @@ describe("github_commits", () => {
   });
 
   it("returns full messages when max_message_chars is absent", async () => {
-    const client = twoCommitClient();
+    const client = makeClientWith(twoCommits);
     const output = await commitsTool.handler(
       { repo: "o/r" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -186,7 +173,7 @@ describe("github_commits", () => {
   });
 
   it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
-    const client = twoCommitClient();
+    const client = makeClientWith(twoCommits);
     setPinnedRef("o/r", "main", "abc123def456");
     const output = await commitsTool.handler(
       { repo: "o/r", ref: "main" },

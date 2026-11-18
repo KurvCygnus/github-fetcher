@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
 import { issueTool, issuesTool } from "../../src/tools/issues.js";
-import { makeConfig } from "../helpers.js";
+import { makeClientWith, makeConfig } from "../helpers.js";
 
 const issue = {
   number: 7,
@@ -134,24 +134,11 @@ describe("github_issue", () => {
   });
 });
 
-function listClient() {
-  //? Same accommodation: the mock literal is asserted to GitHubApi for the
-  //! generic api<T> signature; assertions still inspect the same mock.
-  return {
-    api: vi.fn(async () => ({
-      data: [issue, pr],
-      headers: new Headers(),
-      status: 200,
-      contentType: "application/json",
-    })),
-    apiRaw: vi.fn(),
-    raw: vi.fn(),
-  } as unknown as GitHubApi;
-}
-
+//? The stateless list responses use the shared factory from test/helpers; the
+//? routed clients above (per-URL comment vs issue body) stay local on purpose.
 describe("github_issues", () => {
   it("maps the list shape", async () => {
-    const api = listClient();
+    const api = makeClientWith([issue, pr]);
     const output = await issuesTool.handler(
       { repo: "o/r", state: "open", labels: "bug,help wanted", type: "all" },
       { client: api, config: makeConfig(), authFingerprint: "abc" },
@@ -194,7 +181,7 @@ describe("github_issues", () => {
   });
 
   it("passes since through to the list endpoint", async () => {
-    const api = listClient();
+    const api = makeClientWith([issue, pr]);
     await issuesTool.handler(
       { repo: "o/r", since: "2026-11-01T00:00:00Z" },
       { client: api, config: makeConfig(), authFingerprint: "abc" },
@@ -206,7 +193,7 @@ describe("github_issues", () => {
   });
 
   it("defaults to issues only, filtering PR noise", async () => {
-    const api = listClient();
+    const api = makeClientWith([issue, pr]);
     const output = await issuesTool.handler(
       { repo: "o/r" },
       { client: api, config: makeConfig(), authFingerprint: "abc" },
@@ -215,7 +202,7 @@ describe("github_issues", () => {
   });
 
   it("type pr returns only pull requests", async () => {
-    const api = listClient();
+    const api = makeClientWith([issue, pr]);
     const output = await issuesTool.handler(
       { repo: "o/r", type: "pr" },
       { client: api, config: makeConfig(), authFingerprint: "abc" },

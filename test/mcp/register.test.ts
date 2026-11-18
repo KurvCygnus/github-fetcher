@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { GithubError } from "../../src/core/errors.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import type { ToolContext } from "../../src/core/context.js";
@@ -50,7 +51,10 @@ const okTool = defineTool({
   name: "test_ok",
   title: "Test OK",
   description: "Resolves with fixed data.",
-  inputSchema: {},
+  //? Non-trivial on purpose: one required string plus one optional number, so
+  //? the config passthrough deep-equal on inputSchema bites on real schemas; a
+  //? passthrough regression that only mangles non-empty schemas cannot slip.
+  inputSchema: { name: z.string(), count: z.number().optional() },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
