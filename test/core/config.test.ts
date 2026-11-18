@@ -9,6 +9,7 @@ describe("loadConfig", () => {
       cacheMode: "disk",
       logLevel: "error",
       timeoutMs: 30000,
+      grepTimeoutMs: 2000,
       maxFileBytes: 262144,
       exposeIdentity: false,
     });
@@ -25,6 +26,7 @@ describe("loadConfig", () => {
       GITHUB_CACHE_DIR: "C:\\cache",
       GITHUB_MCP_LOG: "debug",
       GITHUB_MCP_TIMEOUT_MS: "5000",
+      GITHUB_MCP_GREP_TIMEOUT_MS: "1500",
       GITHUB_MCP_MAX_FILE_BYTES: "1024",
     });
     expect(config.githubToken).toBe("tok");
@@ -35,6 +37,7 @@ describe("loadConfig", () => {
     expect(config.cacheDir).toBe("C:\\cache");
     expect(config.logLevel).toBe("debug");
     expect(config.timeoutMs).toBe(5000);
+    expect(config.grepTimeoutMs).toBe(1500);
     expect(config.maxFileBytes).toBe(1024);
   });
 
@@ -46,6 +49,7 @@ describe("loadConfig", () => {
         GITHUB_CACHE: "redis",
         GITHUB_MCP_LOG: "trace",
         GITHUB_MCP_TIMEOUT_MS: "0",
+        GITHUB_MCP_GREP_TIMEOUT_MS: "50",
         GITHUB_MCP_MAX_FILE_BYTES: "nope",
       },
       warn,
@@ -54,8 +58,9 @@ describe("loadConfig", () => {
     expect(config.cacheMode).toBe("disk");
     expect(config.logLevel).toBe("error");
     expect(config.timeoutMs).toBe(30000);
+    expect(config.grepTimeoutMs).toBe(2000);
     expect(config.maxFileBytes).toBe(262144);
-    expect(warn).toHaveBeenCalledTimes(5);
+    expect(warn).toHaveBeenCalledTimes(6);
   });
 
   it("defaults exposeIdentity to false and accepts the documented opt-in values", () => {

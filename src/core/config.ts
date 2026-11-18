@@ -14,6 +14,7 @@ export interface Config {
   cacheDir?: string | undefined;
   logLevel: LogLevel;
   timeoutMs: number;
+  grepTimeoutMs: number;
   maxFileBytes: number;
   exposeIdentity: boolean;
 }
@@ -77,6 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, warn: Warn = () => {}): Confi
     cacheDir: optional(env.GITHUB_CACHE_DIR),
     logLevel: pickOne(env.GITHUB_MCP_LOG, ["error", "info", "debug"], "error", "GITHUB_MCP_LOG", warn),
     timeoutMs: pickInteger(env.GITHUB_MCP_TIMEOUT_MS, 30000, 1, "GITHUB_MCP_TIMEOUT_MS", warn),
+    grepTimeoutMs: pickInteger(env.GITHUB_MCP_GREP_TIMEOUT_MS, 2000, 100, "GITHUB_MCP_GREP_TIMEOUT_MS", warn),
     maxFileBytes: pickInteger(env.GITHUB_MCP_MAX_FILE_BYTES, 262144, 1, "GITHUB_MCP_MAX_FILE_BYTES", warn),
     exposeIdentity: pickExposeIdentity(env.GITHUB_MCP_EXPOSE_IDENTITY, warn),
   };

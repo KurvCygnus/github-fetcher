@@ -197,6 +197,7 @@ Every tool call becomes one GET against the GitHub REST API. Tool results travel
 | `GITHUB_CACHE` | `disk` | Cache backend: `disk`, `memory`, or `off`. |
 | `GITHUB_CACHE_DIR` | platform cache directory | Overrides the disk cache location. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | Per-request timeout in milliseconds. |
+| `GITHUB_MCP_GREP_TIMEOUT_MS` | `2000` | Time budget in milliseconds for `github_file_grep` pattern matching; overruns return `matches_truncated` with a hint. |
 | `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | Maximum response text in UTF-8 bytes before truncation (per-call `max_bytes` caps it further). |
 | `GITHUB_MCP_EXPOSE_IDENTITY` | unset | Opt-in: `1`/`true`/`yes`/`on` makes `github_rate_limit` and `github_doctor` add `authenticated_as` and `scopes`; every other value keeps identity off. |
 | `GITHUB_MCP_LOG` | `error` | Parsed and validated; currently unused — warnings always go to stderr regardless of level. |

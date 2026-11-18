@@ -48,6 +48,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     cacheMode: "off",
     logLevel: "error",
     timeoutMs: 30000,
+    grepTimeoutMs: 2000,
     maxFileBytes: 262144,
     exposeIdentity: false,
     ...overrides,

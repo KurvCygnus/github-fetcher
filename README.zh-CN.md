@@ -197,6 +197,7 @@ VS Code, 加到 `.vscode/mcp.json`:
 | `GITHUB_CACHE` | `disk` | 缓存后端: `disk`, `memory` 或 `off`. |
 | `GITHUB_CACHE_DIR` | 平台缓存目录 | 覆盖磁盘缓存位置. |
 | `GITHUB_MCP_TIMEOUT_MS` | `30000` | 单次请求超时 (毫秒). |
+| `GITHUB_MCP_GREP_TIMEOUT_MS` | `2000` | `github_file_grep` 正则匹配的时间预算 (毫秒); 超时返回 `matches_truncated` 和提示. |
 | `GITHUB_MCP_MAX_FILE_BYTES` | `262144` | 响应文本的 UTF-8 字节上限, 超出即截断 (单次调用可用 `max_bytes` 进一步收紧). |
 | `GITHUB_MCP_EXPOSE_IDENTITY` | 未设置 | 显式开启: `1`/`true`/`yes`/`on` 让 `github_rate_limit` 和 `github_doctor` 追加 `authenticated_as` 和 `scopes`; 其他取值保持关闭. |
 | `GITHUB_MCP_LOG` | `error` | 会被解析和校验; 目前未使用 - 警告始终写入 stderr, 与级别无关. |
