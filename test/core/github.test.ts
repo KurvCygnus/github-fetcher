@@ -58,6 +58,44 @@ describe("GithubClient", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it("mirrors the apiRaw path rules on api() with invalid_params", async () => {
+    const { client, get } = harness();
+    //? api() and apiRaw used to diverge: apiRaw validated its path while api()
+    //* trusted the caller, so the same hostile path skipped every check when it
+    //* arrived through api(). These are the apiRaw rejection classes exercised
+    //* through api(): a path-part //, a literal .. segment, the %2e%2e form
+    //* (WHATWG URL normalization, which fetch applies, collapses it into real
+    //* traversal), backslash rewriting, a raw # fragment, and a second ? in
+    //* the query. Absolute-URL forms keep their pinned unsupported semantics
+    //* from the two host-guard tests above; only slash-anchored paths are
+    //* validated, and every production caller shape is slash-anchored.
+    for (const path of ["//evil.test/x", "/a/../b", "/repos/a/%2e%2e/b", "/repos/a\\..\\b"]) {
+      await expect(client.api(path)).rejects.toMatchObject({ code: "invalid_params" });
+    }
+    await expect(client.api("/repos/a/b#frag")).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("fragment"),
+    });
+    await expect(client.api("/search/issues?q=a?b")).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("at most one query string separator"),
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("allows dot-dot in the api() query part", async () => {
+    const { client, get } = harness();
+    //? .. is legitimate in the query part (range searches like stars:10..20);
+    //* only the path part carries traversal meaning, so this must keep working
+    //* through api() exactly as it does through apiRaw.
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    const result = await client.api("/search/users?q=stars:10..20");
+    expect(result.status).toBe(200);
+    expect(get.mock.calls[0]![0]).toBe("https://api.github.com/search/users?q=stars:10..20");
+  });
+
   it("rejects traversal, fragments, and relative paths in apiRaw with invalid_params", async () => {
     const { client, get } = harness();
     for (const path of ["//evil.test/x", "/a/../b", "repos/a/b"]) {

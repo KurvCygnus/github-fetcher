@@ -137,6 +137,17 @@ export class GithubClient implements GitHubApi {
   }
 
   async api<T>(path: string, options: ApiOptions = {}): Promise<ApiResult<T>> {
+    //* Parity with apiRaw: slash-anchored paths (every caller shape) now run
+    //* the same validator apiRaw applies, so the hostile classes it rejects
+    //* (.. and %2e%2e segments, //, raw \, raw #, a second ?) can no longer
+    //* slip through this layer unvalidated. The other two input forms keep
+    //* their original flow on purpose: an https:// URL names its own host for
+    //* the guard below, and any other non-slash string is already rejected by
+    //* that guard (it cannot complete the api.github.com/ prefix), so
+    //* validating it here would only relabel its pinned unsupported error.
+    if (path.startsWith("/")) {
+      validateApiPath(path);
+    }
     const url = path.startsWith("https://") ? path : `https://api.github.com${path}`;
     //* Host guard: the trailing slash rejects lookalike hosts such as
     //* api.github.com.evil.com, so only api.github.com can be reached here.
