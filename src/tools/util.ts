@@ -65,8 +65,11 @@ function directChildren(paths: string[], dir: string | undefined): string[] {
 
 //? Builds the path-miss hint from cached listings only. A nested path first
 //* tries the parent directory's own listing (the same URL the tree tool caches
-//* for that dir), falling back to the ref's root listing labeled "repo root".
-//* Null means no usable cache entry existed and the error stays undecorated.
+//* for that dir), falls back to the ref's root listing labeled "repo root",
+//* and finally to that root listing's "?recursive=1" variant, which a recursive
+//* github_tree call caches with every path in it; the same prefix strip
+//* recovers the dir's sibling set from it. Null means no usable cache entry
+//* existed and the error stays undecorated.
 async function buildPathHint(
   cache: CacheStore,
   authFingerprint: string,
@@ -90,12 +93,30 @@ async function buildPathHint(
       }
     }
   }
+  const rootUrl = treeCacheUrl(owner, name, encodeURIComponent(ref));
   if (names === null) {
-    const rootUrl = treeCacheUrl(owner, name, encodeURIComponent(ref));
     const root = await readCachedTree(cache, cacheKey(rootUrl, authFingerprint));
-    if (root === null) return null;
-    names = directChildren(root, undefined);
+    if (root !== null) {
+      names = directChildren(root, undefined);
+    }
   }
+  //? Last resort before giving up: a recursive root listing holds every path
+  //* from the repo root, so the prefix strip recovers the same sibling set the
+  //* scoped listings hold; an empty extraction still counts as unusable.
+  if (names === null) {
+    const recursive = await readCachedTree(
+      cache,
+      cacheKey(`${rootUrl}?recursive=1`, authFingerprint),
+    );
+    if (recursive !== null) {
+      const children = directChildren(recursive, dir);
+      if (children.length > 0) {
+        names = children;
+        label = dir ?? "repo root";
+      }
+    }
+  }
+  if (names === null) return null;
   return `path "${path}" not found at ref ${ref}; entries in ${label}: ${names.slice(0, HINT_SIBLING_LIMIT).join(", ")}`;
 }
 

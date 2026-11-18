@@ -78,6 +78,7 @@ function isSnapshotEntry(value: unknown): value is SnapshotEntry {
 //* snapshot store must never fail the trending call it decorates. The handler
 //* also guards the injected fakes, so this belt-and-braces catch only covers
 //* the fs layer itself.
+//* Concurrency, adjudicated: overlapping calls can interleave the read-modify-write, and the worst case degrades to "no prior", so no lock.
 function defaultSnapshotStore(cacheDir: string): {
   readSnapshot: (key: string) => Promise<SnapshotEntry | undefined>;
   writeSnapshot: (key: string, entry: SnapshotEntry) => Promise<void>;

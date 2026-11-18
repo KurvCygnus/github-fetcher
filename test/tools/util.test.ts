@@ -40,9 +40,11 @@ describe("truncateText", () => {
 });
 
 //? The tree URL strings below are exactly what the handlers request: the plain
-//* ref listing for the root and "ref:dir" for a path-scoped listing.
+//* ref listing for the root, "ref:dir" for a path-scoped listing, and the root
+//* listing with the recursive query a recursive github_tree call caches under.
 const ROOT_URL = "https://api.github.com/repos/octocat/Hello-World/git/trees/main";
 const SRC_URL = "https://api.github.com/repos/octocat/Hello-World/git/trees/main:src";
+const ROOT_RECURSIVE_URL = `${ROOT_URL}?recursive=1`;
 
 describe("readCachedTree", () => {
   it("returns the cached listing's entry paths without touching the network", async () => {
@@ -145,6 +147,71 @@ describe("notFoundWithHint", () => {
     })) as GithubError;
     expect(result.details.hint).toBe(
       'path "src/missing.ts" not found at ref main; entries in repo root: src, README.md',
+    );
+  });
+
+  it("finds siblings from a cached recursive root listing when only it is seeded", async () => {
+    //? A recursive github_tree call caches the root listing with ?recursive=1
+    //* and that listing holds every path from the repo root, so a 404 hint must
+    //* extract the dir's siblings from it even when no scoped listing is cached.
+    const nested = memoryCacheStore();
+    await seedCacheTree(nested, "abc", ROOT_RECURSIVE_URL, {
+      tree: [{ path: "src/index.ts" }, { path: "src/util.ts" }, { path: "src/deep/nested.ts" }],
+    });
+    const fromNested = (await notFoundWithHint(notFound(), {
+      ...base,
+      cache: nested,
+      path: "src/missing.ts",
+    })) as GithubError;
+    expect(fromNested.details.hint).toBe(
+      'path "src/missing.ts" not found at ref main; entries in src: index.ts, util.ts',
+    );
+
+    const topLevel = memoryCacheStore();
+    await seedCacheTree(topLevel, "abc", ROOT_RECURSIVE_URL, {
+      tree: [{ path: "README.md" }, { path: "docs/guide.md" }, { path: "src" }],
+    });
+    const fromTopLevel = (await notFoundWithHint(notFound(), {
+      ...base,
+      cache: topLevel,
+      path: "gone.md",
+    })) as GithubError;
+    expect(fromTopLevel.details.hint).toBe(
+      'path "gone.md" not found at ref main; entries in repo root: README.md, src',
+    );
+  });
+
+  it("prefers the exact dir and root listings over the recursive variant", async () => {
+    const withDir = memoryCacheStore();
+    await seedCacheTree(withDir, "abc", SRC_URL, {
+      tree: [{ path: "index.ts" }],
+    });
+    await seedCacheTree(withDir, "abc", ROOT_RECURSIVE_URL, {
+      tree: [{ path: "src/other.ts" }],
+    });
+    const fromDir = (await notFoundWithHint(notFound(), {
+      ...base,
+      cache: withDir,
+      path: "src/missing.ts",
+    })) as GithubError;
+    expect(fromDir.details.hint).toBe(
+      'path "src/missing.ts" not found at ref main; entries in src: index.ts',
+    );
+
+    const withRoot = memoryCacheStore();
+    await seedCacheTree(withRoot, "abc", ROOT_URL, {
+      tree: [{ path: "README.md" }],
+    });
+    await seedCacheTree(withRoot, "abc", ROOT_RECURSIVE_URL, {
+      tree: [{ path: "docs/guide.md" }],
+    });
+    const fromRoot = (await notFoundWithHint(notFound(), {
+      ...base,
+      cache: withRoot,
+      path: "gone.md",
+    })) as GithubError;
+    expect(fromRoot.details.hint).toBe(
+      'path "gone.md" not found at ref main; entries in repo root: README.md',
     );
   });
 
