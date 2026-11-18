@@ -70,7 +70,7 @@ export const issueTool = defineTool({
       .int()
       .min(1)
       .optional()
-      .describe("Truncate each comment body to this many characters"),
+      .describe("Truncate each comment body to this many UTF-8 bytes"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

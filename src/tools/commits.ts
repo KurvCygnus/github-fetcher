@@ -34,7 +34,7 @@ export const commitsTool = defineTool({
       .int()
       .min(1)
       .optional()
-      .describe("Truncate each commit message to this many characters"),
+      .describe("Truncate each commit message to this many UTF-8 bytes"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
