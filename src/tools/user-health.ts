@@ -85,7 +85,7 @@ export const userHealthTool = defineTool({
   name: "github_user_health",
   title: "GitHub user health",
   description:
-    "One-call user profile audit: original vs fork split, star totals, top repositories, language distribution, and 90-day push activity — the walk the stress test ran manually across 16 calls, compressed to 1. Costs 2-11 core calls, none search. top_repos, languages, and 90-day push activity exclude forks by default (include_forks: true keeps them); originals, forks, fork_share, and total_stars always count them. Returns {user, name, type, public_repos, originals, forks, fork_share, total_stars, top_repos[{full_name, stars, language, pushed_at}], languages, recent_pushes_90d, oldest_push_90d_gap_days, repos_truncated, meta}.",
+    "One-call user profile audit: original vs fork split, star totals, top repositories, language distribution, and 90-day push activity — the multi-call walk of a manual audit, compressed to 1. Costs 2-11 core calls, none search. top_repos, languages, and 90-day push activity exclude forks by default (include_forks: true keeps them); originals, forks, fork_share, and total_stars always count them. Returns {user, name, type, public_repos, originals, forks, fork_share, total_stars, top_repos[{full_name, stars, language, pushed_at}], languages, recent_pushes_90d, oldest_push_90d_gap_days, repos_truncated, meta}.",
   inputSchema: {
     user: z.string().regex(LOGIN_PATTERN).describe("GitHub user login, like octocat (alphanumerics and hyphens)"),
     include_forks: z.boolean().optional().describe("Include fork repositories in the top_repos, languages, and push-activity metrics; defaults to false, pass true to include them"),
