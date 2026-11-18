@@ -349,10 +349,12 @@ describe("github_files", () => {
       ctxFor(client),
     );
     const items = output.results as Array<Record<string, unknown>>;
+    //? Message follows the shared decodeContents pipeline, which unified the
+    //* per-tool unsupported wording into one generic message.
     expect(items[0]).toEqual({
       path: "empty.txt",
       ok: false,
-      error: { code: "unsupported", message: "GitHub did not provide readable content for this file" },
+      error: { code: "unsupported", message: "GitHub did not provide readable content" },
     });
   });
 

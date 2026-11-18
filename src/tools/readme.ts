@@ -1,20 +1,9 @@
 import { z } from "zod";
-import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
+import { type ContentsPayload, decodeContents } from "./contents.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { decodeUtf8, parseRepo, truncateText } from "./util.js";
-
-//? The readme endpoint answers a single file object with the Contents payload
-//? shape; only the fields the handler consumes are typed.
-interface ReadmeResponse {
-  encoding: string;
-  content?: string;
-  download_url: string | null;
-  sha: string;
-  size: number;
-  path: string;
-}
 
 export const readmeTool = defineTool({
   name: "github_readme",
@@ -33,28 +22,23 @@ export const readmeTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const result = await ctx.client.api<ReadmeResponse>(`/repos/${owner}/${name}/readme`, {
+    const result = await ctx.client.api<ContentsPayload>(`/repos/${owner}/${name}/readme`, {
       fresh: input.fresh,
       cacheTtlMs: 300_000,
     });
     const { data } = result;
     const meta = responseMeta(result, 1);
 
-    let bytes: Uint8Array;
-    if (data.encoding === "base64" && data.content !== undefined) {
-      bytes = new Uint8Array(Buffer.from(data.content, "base64"));
-    } else if (data.download_url) {
-      bytes = await ctx.client.raw(data.download_url);
-    } else {
-      throw new GithubError("unsupported", "GitHub did not provide readable content for this readme");
-    }
-
-    if (looksBinary(bytes, data.path)) {
+    //? decodeContents collapses binary bytes to null, so the binary exit sizes
+    //* itself from the payload's size field, which GitHub keeps equal to the
+    //* decoded byte length.
+    const bytes = await decodeContents(ctx, data);
+    if (bytes === null) {
       return {
         repo: `${owner}/${name}`,
         path: data.path,
         sha: data.sha,
-        size: bytes.byteLength,
+        size: data.size,
         encoding: null,
         content: null,
         binary: true,

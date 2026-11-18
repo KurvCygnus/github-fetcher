@@ -1,22 +1,11 @@
 import { z } from "zod";
-import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
+import { type ContentsPayload, decodeContents } from "./contents.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
-
-interface ContentsResponse {
-  type: string;
-  encoding: string;
-  size: number;
-  name: string;
-  path: string;
-  sha: string;
-  content?: string;
-  download_url: string | null;
-}
 
 export const fileGrepTool = defineTool({
   name: "github_file_grep",
@@ -76,7 +65,7 @@ export const fileGrepTool = defineTool({
     //* truthy check mirrors its guard), and the contents read adds one more, so
     //* the count ends at 1 or 2.
     const calls = (input.ref || pinned ? 0 : 1) + 1;
-    const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
+    const contents = await ctx.client.api<ContentsPayload | ContentsPayload[]>(
       `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
       { fresh: input.fresh, cacheTtlMs: 300_000 },
     );
@@ -89,16 +78,8 @@ export const fileGrepTool = defineTool({
       throw new GithubError("invalid_params", "path is not a file");
     }
 
-    let bytes: Uint8Array;
-    if (data.encoding === "base64" && data.content !== undefined) {
-      bytes = new Uint8Array(Buffer.from(data.content, "base64"));
-    } else if (data.download_url) {
-      bytes = await ctx.client.raw(data.download_url);
-    } else {
-      throw new GithubError("unsupported", "GitHub did not provide readable content for this file");
-    }
-
-    if (looksBinary(bytes, data.path)) {
+    const bytes = await decodeContents(ctx, data);
+    if (bytes === null) {
       throw new GithubError("invalid_params", "binary file; grep needs text");
     }
     const decoded = decodeUtf8(bytes);

@@ -1,23 +1,12 @@
 import { z } from "zod";
-import { looksBinary } from "../core/binary.js";
 import { GithubError } from "../core/errors.js";
 import type { ApiResult } from "../core/github.js";
+import { type ContentsPayload, decodeContents } from "./contents.js";
 import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { decodeUtf8, encodePath, githubQuery, notFoundWithHint, parseRepo, truncateText } from "./util.js";
-
-interface ContentsResponse {
-  type: string;
-  encoding: string;
-  size: number;
-  name: string;
-  path: string;
-  sha: string;
-  content?: string;
-  download_url: string | null;
-}
 
 export const fileTool = defineTool({
   name: "github_file",
@@ -52,9 +41,9 @@ export const fileTool = defineTool({
     //* a pin anchored the read (the truthy check mirrors its guard exactly).
     //* The contents read adds one more request, so the count ends at 1 or 2.
     const calls = (input.ref || pinned ? 0 : 1) + 1;
-    let contents: ApiResult<ContentsResponse | ContentsResponse[]>;
+    let contents: ApiResult<ContentsPayload | ContentsPayload[]>;
     try {
-      contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
+      contents = await ctx.client.api<ContentsPayload | ContentsPayload[]>(
         `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
         { fresh: input.fresh, cacheTtlMs: 300_000 },
       );
@@ -80,22 +69,17 @@ export const fileTool = defineTool({
       throw new GithubError("invalid_params", "path is not a file");
     }
 
-    let bytes: Uint8Array;
-    if (data.encoding === "base64" && data.content !== undefined) {
-      bytes = new Uint8Array(Buffer.from(data.content, "base64"));
-    } else if (data.download_url) {
-      bytes = await ctx.client.raw(data.download_url);
-    } else {
-      throw new GithubError("unsupported", "GitHub did not provide readable content for this file");
-    }
-
-    if (looksBinary(bytes, data.path)) {
+    //? decodeContents collapses binary bytes to null, so the binary exit sizes
+    //* itself from the payload's size field, which GitHub keeps equal to the
+    //* decoded byte length.
+    const bytes = await decodeContents(ctx, data);
+    if (bytes === null) {
       return {
         repo: `${owner}/${name}`,
         path: data.path,
         ref,
         sha: data.sha,
-        size: bytes.byteLength,
+        size: data.size,
         encoding: null,
         content: null,
         binary: true,

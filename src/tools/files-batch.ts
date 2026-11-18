@@ -1,26 +1,14 @@
 import { z } from "zod";
-import { looksBinary } from "../core/binary.js";
 import type { ApiResult } from "../core/github.js";
 import type { ToolContext } from "../core/context.js";
 import { GithubError, toGithubError } from "../core/errors.js";
+import { type ContentsPayload, decodeContents } from "./contents.js";
 import { defineTool } from "./define.js";
 import type { MetaSource } from "./meta.js";
 import { scarcestMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
 import { decodeUtf8, encodePath, githubQuery, parseRepo, truncateText } from "./util.js";
-
-//? Only the fields this tool reads are typed; the REST payload carries more.
-interface ContentsResponse {
-  type: string;
-  encoding: string;
-  size: number;
-  name: string;
-  path: string;
-  sha: string;
-  content?: string;
-  download_url: string | null;
-}
 
 interface FileBatchSuccess {
   path: string;
@@ -52,7 +40,7 @@ type FileBatchItem = FileBatchSuccess | FileBatchFailure;
 //* github_file.
 interface FetchOneOutcome {
   item: FileBatchItem;
-  result: ApiResult<ContentsResponse | ContentsResponse[]> | undefined;
+  result: ApiResult<ContentsPayload | ContentsPayload[]> | undefined;
   attempts: number;
 }
 
@@ -73,7 +61,7 @@ async function fetchOne(
   try {
     const path = encodePath(pathSpec);
     attempts += 1;
-    const contents = await ctx.client.api<ContentsResponse | ContentsResponse[]>(
+    const contents = await ctx.client.api<ContentsPayload | ContentsPayload[]>(
       `/repos/${owner}/${name}/contents/${path}${githubQuery({ ref })}`,
       { fresh, cacheTtlMs: 300_000 },
     );
@@ -85,16 +73,11 @@ async function fetchOne(
       throw new GithubError("invalid_params", "path is not a file");
     }
 
-    let bytes: Uint8Array;
-    if (data.encoding === "base64" && data.content !== undefined) {
-      bytes = new Uint8Array(Buffer.from(data.content, "base64"));
-    } else if (data.download_url) {
-      bytes = await ctx.client.raw(data.download_url);
-    } else {
-      throw new GithubError("unsupported", "GitHub did not provide readable content for this file");
-    }
-
-    if (looksBinary(bytes, data.path)) {
+    //? decodeContents collapses binary bytes to null, so the binary projection
+    //* sizes itself from the payload's size field, which GitHub keeps equal to
+    //* the decoded byte length.
+    const bytes = await decodeContents(ctx, data);
+    if (bytes === null) {
       return {
         item: {
           path: data.path,
@@ -102,7 +85,7 @@ async function fetchOne(
           data: {
             path: data.path,
             sha: data.sha,
-            size: bytes.byteLength,
+            size: data.size,
             encoding: null,
             content: null,
             binary: true,
