@@ -1,4 +1,4 @@
 import { tools } from "./index.js";
 
 export const allTools = tools;
-export const EXPECTED_TOOL_COUNT = 40;
+export const EXPECTED_TOOL_COUNT = 41;

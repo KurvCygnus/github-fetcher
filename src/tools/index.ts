@@ -4,6 +4,7 @@ import { apiGetTool } from "./api.js";
 import { repoActivityTool } from "./activity.js";
 import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
+import { commitTool } from "./commit.js";
 import { commitsTool } from "./commits.js";
 import { compareReposTool } from "./compare.js";
 import { compareRefsTool } from "./compare-refs.js";
@@ -38,6 +39,7 @@ export const tools: readonly ToolDefinition[] = [
   filesBatchTool,
   readmeTool,
   commitsTool,
+  commitTool,
   branchesTool,
   issueTool,
   issuesTool,
