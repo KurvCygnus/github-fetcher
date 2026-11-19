@@ -181,8 +181,8 @@ describe("github_tree", () => {
     expect(combinedSnapshot.hint).toBe("narrow path/ref; GitHub truncated the tree");
   });
 
-  //* Recursive-timeout degrade fixtures: the first call rejects with the stress
-  //* run's exact timeout GithubError, then the non-recursive retry serves the
+  //* Recursive-timeout degrade fixtures: the first call rejects with the timeout
+  //* GithubError a real aborted request carries, then the non-recursive retry serves the
   //* given tree. Same mock-literal accommodation as above for the generic api<T>.
   function degradedClient(retryData: unknown) {
     return {

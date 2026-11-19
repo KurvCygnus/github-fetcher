@@ -51,7 +51,6 @@ const commitPayload = {
 
 //? makeClientWith cannot express cache outcomes (the shared factory returns a
 //* result without `cache`), so meta-pinning assertions keep a local factory,
-//* matching the house precedent from the factory-adoption adjudication.
 function clientFor(data: unknown): ToolContext["client"] {
   return {
     api: vi.fn(async () => ({
