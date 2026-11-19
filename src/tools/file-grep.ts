@@ -149,7 +149,7 @@ export const fileGrepTool = defineTool({
   name: "github_file_grep",
   title: "GitHub file grep",
   description:
-    "Search a single file's text with a regular expression and get line numbers with context. Cache-first: a warm cache costs zero upstream calls; a miss costs 1 core call. Use github_search_code for repo-wide or cross-repo search (30 requests/minute, GitHub index lag). Matching runs in a worker thread with a 2000 ms time budget; overruns degrade to matches_truncated instead of blocking the session. Returns {repo, path, ref, pattern, total_lines, matches, matches_truncated, meta}.",
+    "Search a single file's text with a regular expression and get line numbers with context. Cache-first: a warm cache costs zero upstream calls; a miss costs 1 core call. Use github_search_code for repo-wide or cross-repo search (30 requests/minute, GitHub index lag). Matching runs in a worker thread with a 2000 ms (default; GITHUB_MCP_GREP_TIMEOUT_MS) time budget; overruns degrade to matches_truncated instead of blocking the session. Returns {repo, path, ref, pattern, total_lines, matches, matches_truncated, meta}; an overrun returns no matches and carries hint instead.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     path: z.string().describe("File path inside the repository"),

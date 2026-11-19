@@ -225,10 +225,12 @@ describe("github_file_grep", () => {
     //* the same pattern now blows the budget and the handler degrades to
     //* matches_truncated with a hint instead of blocking the session.
     //* (a+)+$ against a run of a's ending in b is the classic catastrophic
-    //* backtracking shape; 26 a's measure ~850 ms per exec on the dev machine
-    //* (17x the 50 ms budget), and the test stays fast because terminate()
-    //* kills the runaway exec at the budget instead of waiting for it.
-    const text = `${"a".repeat(26)}b\nnext\n`;
+    //* backtracking shape; 26 a's already measure ~850 ms per exec on the dev
+    //* machine (17x the 50 ms budget), and 30 a's leave determinism headroom
+    //* so the budget still trips on slower machines — the test stays fast
+    //* because terminate() kills the runaway exec at the budget instead of
+    //* waiting for it.
+    const text = `${"a".repeat(30)}b\nnext\n`;
     const client = clientFor(contents("big.txt", text));
     const output = await fileGrepTool.handler(
       { repo: "octocat/Hello-World", path: "big.txt", pattern: "(a+)+$", ref: "main" },

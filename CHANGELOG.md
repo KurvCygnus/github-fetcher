@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_file_grep` degrades a pattern that exceeds the time budget to `matches_truncated` with a hint instead of blocking the session until the match loop finishes (the previous behavior).
 - The `max_message_chars` (`github_commits`) and `max_comment_chars` (`github_issue`) descriptions state UTF-8 bytes, matching what the truncation actually clips.
 
+### Fixed
+
+- `github_file_grep` patterns matching empty strings no longer produce duplicate empty matches capped at `max_matches`: the scan steps one character past a zero-length match instead of returning it forever (a 0.4 behavior changed in code and only now documented).
+- Unsupported-content errors share one message, `GitHub did not provide readable content`, replacing the previous per-tool variants.
+
 ## [0.4.0] - 2026-11-18
 
 ### Added

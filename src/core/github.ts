@@ -145,6 +145,9 @@ export class GithubClient implements GitHubApi {
     //* the guard below, and any other non-slash string is already rejected by
     //* that guard (it cannot complete the api.github.com/ prefix), so
     //* validating it here would only relabel its pinned unsupported error.
+    //* Residual: the https:// branch's path part stays unvalidated because the
+    //* only absolute-URL caller is GitHub's own Link-header pagination
+    //* (trusted input).
     if (path.startsWith("/")) {
       validateApiPath(path);
     }
