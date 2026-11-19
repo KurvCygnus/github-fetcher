@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- `github_commit` reads one commit in full: message, author, additions/deletions, and the changed files with bounded patches — at most 100 files with `files_truncated`, patch text capped at 4000 characters; 1 core call. `github_commits` lists commits; this reads one.
+- `github_file_grep` runs pattern matching in a worker thread with a configurable time budget: `GITHUB_MCP_GREP_TIMEOUT_MS` (default 2000, minimum 100) bounds the match loop, so a pathological pattern cannot hold the session.
+- `github_api_get` paths are validated with the same rules as the raw path: dot segments (`..` and encoded variants), `//`, raw backslashes, raw `#`, and a second `?` are rejected on every call path, closing the dual-layer divergence between the tool's shortcut and the raw transport.
+- The `github_file`/`github_tree` path-miss `hint` gains a last-resort probe of the ref's cached `?recursive=1` root listing, recovering the sibling set for nested paths when no scoped listing is cached — still with no extra upstream calls.
+- Internal: the contents decode pipeline (inline base64, `download_url` fallback, binary rejection) consolidates into one shared module consumed by `github_file`, `github_file_grep`, `github_files`, and `github_readme`.
+
+### Changed
+
+- `github_file_grep` degrades a pattern that exceeds the time budget to `matches_truncated` with a hint instead of blocking the session until the match loop finishes (the previous behavior).
+- The `max_message_chars` (`github_commits`) and `max_comment_chars` (`github_issue`) descriptions state UTF-8 bytes, matching what the truncation actually clips.
+
 ## [0.4.0] - 2026-11-18
 
 ### Added

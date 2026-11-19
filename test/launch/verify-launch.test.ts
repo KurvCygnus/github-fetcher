@@ -22,9 +22,9 @@ async function fixture(): Promise<string> {
   };
   await writeFile(join(root, "package.json"), JSON.stringify(pkg));
   await writeFile(join(root, "src/core/version.ts"), 'export const VERSION = "0.4.0";\n');
-  await writeFile(join(root, "src/tools/registry.ts"), "export const EXPECTED_TOOL_COUNT = 40;\n");
+  await writeFile(join(root, "src/tools/registry.ts"), "export const EXPECTED_TOOL_COUNT = 41;\n");
 
-  const tools = Array.from({ length: 40 }, (_, index) => `github_tool_${index}`).join(", ");
+  const tools = Array.from({ length: 41 }, (_, index) => `github_tool_${index}`).join(", ");
   await writeFile(join(root, "README.md"), [
     "# Test",
     "## Built for mainland China networks",
