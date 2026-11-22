@@ -21,6 +21,7 @@ interface FileBatchSuccess {
     content: string | null;
     binary: boolean;
     truncated: boolean;
+    total_lines: number | null;
   };
 }
 
@@ -46,9 +47,9 @@ interface FetchOneOutcome {
 
 //* The per-path half of the github_file flow: encode the path, fetch contents,
 //* decode base64 or raw bytes, and project the same fields github_file reports
-//* minus the line fields. Every failure — malformed path, 404, directory hit,
-//* hostile bytes — is normalized to an ok:false item here so one bad path never
-//* rejects the batch.
+//* plus total_lines, the whole-file line count. Every failure - malformed path,
+//* 404, directory hit, hostile bytes - is normalized to an ok:false item here so
+//* one bad path never rejects the batch.
 async function fetchOne(
   ctx: ToolContext,
   owner: string,
@@ -90,6 +91,7 @@ async function fetchOne(
             content: null,
             binary: true,
             truncated: false,
+            total_lines: null,
           },
         },
         result: contents,
@@ -101,6 +103,10 @@ async function fetchOne(
     if (text === null) {
       throw new GithubError("unsupported", "file is not valid UTF-8");
     }
+    //* A line is a newline-separated segment; the trailing newline yields a final
+    //* empty line, matching github_file. Count before the byte budget clips the
+    //* text so the number describes the whole file, not the returned excerpt.
+    const totalLines = text.split("\n").length;
     const clipped = truncateText(text, ctx.config.maxFileBytes);
     return {
       item: {
@@ -114,6 +120,7 @@ async function fetchOne(
           content: clipped.text,
           binary: false,
           truncated: clipped.truncated,
+          total_lines: totalLines,
         },
       },
       result: contents,
@@ -137,7 +144,7 @@ export const filesBatchTool = defineTool({
   name: "github_files",
   title: "GitHub file batch",
   description:
-    "Batch file read: fetches up to 10 paths per call from one repository concurrently, one core call per uncached path, zero for cache hits, and reports per-item success and failure so one missing or malformed path never rejects the call. Returns {results[{path, ok, data{path, sha, size, encoding, content, binary, truncated}} or {path, ok, error{code, message}}], elapsed_ms, meta}.",
+    "Batch file read: fetches up to 10 paths per call from one repository concurrently, one core call per uncached path, zero for cache hits, and reports per-item success and failure so one missing or malformed path never rejects the call. Returns {results[{path, ok, data{path, sha, size, encoding, content, binary, truncated, total_lines}} or {path, ok, error{code, message}}], elapsed_ms, meta}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     paths: z.array(z.string()).min(1).max(10).describe("File paths inside the repository; up to 10 per call"),

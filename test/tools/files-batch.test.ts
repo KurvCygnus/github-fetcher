@@ -99,6 +99,7 @@ describe("github_files", () => {
         content: "alpha\n",
         binary: false,
         truncated: false,
+        total_lines: 2,
       },
     });
     expect(items[1]).toEqual({
@@ -118,7 +119,7 @@ describe("github_files", () => {
     expect(output.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 12 }, calls: 2 });
   });
 
-  it("projects every ok item with exactly the github_file fields minus the line fields", async () => {
+  it("projects every ok item with the github_file fields plus total_lines", async () => {
     const client = clientForRoutes({
       "a.txt": contents("a.txt", "alpha\n"),
       "b.txt": contents("b.txt", "beta\n"),
@@ -133,17 +134,17 @@ describe("github_files", () => {
       {
         path: "a.txt",
         ok: true,
-        data: { path: "a.txt", sha: "sha1", size: 6, encoding: "utf-8", content: "alpha\n", binary: false, truncated: false },
+        data: { path: "a.txt", sha: "sha1", size: 6, encoding: "utf-8", content: "alpha\n", binary: false, truncated: false, total_lines: 2 },
       },
       {
         path: "b.txt",
         ok: true,
-        data: { path: "b.txt", sha: "sha1", size: 5, encoding: "utf-8", content: "beta\n", binary: false, truncated: false },
+        data: { path: "b.txt", sha: "sha1", size: 5, encoding: "utf-8", content: "beta\n", binary: false, truncated: false, total_lines: 2 },
       },
       {
         path: "c.txt",
         ok: true,
-        data: { path: "c.txt", sha: "sha1", size: 6, encoding: "utf-8", content: "gamma\n", binary: false, truncated: false },
+        data: { path: "c.txt", sha: "sha1", size: 6, encoding: "utf-8", content: "gamma\n", binary: false, truncated: false, total_lines: 2 },
       },
     ]);
     expect(output.meta).toEqual({ cache: "miss", quota: { resource: "core", remaining: 12 }, calls: 3 });
@@ -262,7 +263,7 @@ describe("github_files", () => {
     expect(items[0]).toEqual({
       path: "logo.png",
       ok: true,
-      data: { path: "logo.png", sha: "sha2", size: 7, encoding: null, content: null, binary: true, truncated: false },
+      data: { path: "logo.png", sha: "sha2", size: 7, encoding: null, content: null, binary: true, truncated: false, total_lines: null },
     });
   });
 
@@ -326,7 +327,7 @@ describe("github_files", () => {
     expect(items[0]).toEqual({
       path: "big.txt",
       ok: true,
-      data: { path: "big.txt", sha: "sha4", size: 6, encoding: "utf-8", content: "rawsix", binary: false, truncated: false },
+      data: { path: "big.txt", sha: "sha4", size: 6, encoding: "utf-8", content: "rawsix", binary: false, truncated: false, total_lines: 1 },
     });
     expect(client.raw).toHaveBeenCalledWith("https://raw.githubusercontent.com/octocat/Hello-World/main/big.txt");
     //? Same boundary as github_file: one contents invocation per path, with the
@@ -368,7 +369,7 @@ describe("github_files", () => {
     expect(items[0]).toEqual({
       path: "long.txt",
       ok: true,
-      data: { path: "long.txt", sha: "sha1", size: 10, encoding: "utf-8", content: "aaaa", binary: false, truncated: true },
+      data: { path: "long.txt", sha: "sha1", size: 10, encoding: "utf-8", content: "aaaa", binary: false, truncated: true, total_lines: 3 },
     });
   });
 
