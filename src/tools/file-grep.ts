@@ -1,6 +1,7 @@
 import { Worker } from "node:worker_threads";
 import { z } from "zod";
 import { GithubError } from "../core/errors.js";
+import { withGrepSlot } from "../core/grep-queue.js";
 import { type ContentsPayload, decodeContents } from "./contents.js";
 import { defineTool } from "./define.js";
 import { type GrepJob, type GrepMessage, WORKER_SOURCE } from "./file-grep-worker.js";
@@ -237,10 +238,13 @@ export const fileGrepTool = defineTool({
     const timeoutMs = ctx.config.grepTimeoutMs;
     let matched: GrepResult;
     try {
-      matched = await runMatchInWorker(
+      //? The worker call stays lazy inside the slot: acquiring a slot may wait
+      //* behind other sessions, and the per-call budget must start only after
+      //* this job actually owns a worker, so queue time never consumes it.
+      matched = await withGrepSlot(() => runMatchInWorker(
         { pattern: input.pattern, text, contextLines: input.context_lines ?? 2, maxMatches: input.max_matches ?? 50 },
         timeoutMs,
-      );
+      ));
     } catch (error) {
       if (error instanceof GrepOverrun) {
         return {
