@@ -5,7 +5,7 @@ import { defineTool } from "./define.js";
 import { responseMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
 import { resolveRef } from "./ref.js";
-import { encodePath, githubQuery, notFoundWithHint, parseRepo } from "./util.js";
+import { encodePath, githubQuery, matchGlob, notFoundWithHint, parseRepo } from "./util.js";
 
 type GitTreeType = "blob" | "tree" | "commit";
 
@@ -41,11 +41,12 @@ export const treeTool = defineTool({
   name: "github_tree",
   title: "GitHub tree",
   description:
-    "List files and directories in a repository at a ref, using the git trees API. Use recursive=true only when the full tree is needed. summary_only drops entries and returned_entries and answers with total_bytes plus top_dirs totals instead. Returns {ref, path, entries[{path, type, size, sha}], total_entries, returned_entries, summary, truncated, api_truncated}.",
+    "List files and directories in a repository at a ref, using the git trees API. Use recursive=true only when the full tree is needed. summary_only drops entries and returned_entries and answers with total_bytes plus top_dirs totals instead. glob filters entry paths (** crosses directories, * stays within one segment, ? matches one character); it filters the entry list only and does not search file contents, and is ignored under summary_only because there is no entry list to filter. Returns {ref, path, entries[{path, type, size, sha}], total_entries, returned_entries, summary, truncated, api_truncated}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
     path: z.string().optional().describe("Subdirectory path inside the ref"),
+    glob: z.string().min(1).max(200).optional().describe("Filter returned entries by glob pattern, e.g. **/dev-overlay/** or src/*.ts; filters the entry list only — use github_file_grep to search file contents"),
     recursive: z.boolean().optional().describe("Return the complete tree recursively"),
     max_entries: z.number().int().min(1).max(10000).optional().describe("Maximum entries returned, 1-10000, default 1000"),
     summary_only: z.boolean().optional().describe("Omit entries and return total_bytes plus top_dirs for the full tree instead; max_entries is ignored; use with recursive: true"),
@@ -121,9 +122,14 @@ export const treeTool = defineTool({
       sha: entry.sha,
     }));
     const maxEntries = input.max_entries ?? 1000;
-    //* The summary describes the full API tree, so a capped page still reports the
-    //* repository's real composition; total_entries is GitHub's response size, not
-    //* the true repository total when GitHub itself truncated the tree.
+    //? The glob is an entry-list filter, so it runs before the cap and before the
+    //* totals are counted; summary_only keeps the full API tree (there is no entry
+    //* list to filter) and therefore ignores the glob entirely.
+    const glob = input.glob;
+    const matched = glob === undefined ? all : all.filter((entry) => matchGlob(entry.path, glob));
+    //* The summary describes the full API tree, so neither the cap nor the glob
+    //* changes it; total_entries counts matched entries in entries mode and is
+    //* GitHub's response size under summary_only.
     const summary = { files: 0, dirs: 0, symlinks: 0, submodules: 0 };
     for (const entry of all) {
       if (entry.type === "file") summary.files += 1;
@@ -131,9 +137,9 @@ export const treeTool = defineTool({
       else if (entry.type === "symlink") summary.symlinks += 1;
       else summary.submodules += 1;
     }
-    //? summary_only answers for the whole API tree, so max_entries neither caps
-    //? nor locally truncates anything there; entries-mode keeps the local cap.
-    const locallyTruncated = !input.summary_only && all.length > maxEntries;
+    //? summary_only answers for the whole API tree, so neither max_entries nor
+    //* the glob caps or locally truncates anything there; entries-mode applies both.
+    const locallyTruncated = !input.summary_only && matched.length > maxEntries;
     const truncated = locallyTruncated || data.truncated;
     //? The degraded hint wins over the truncation hints: the caller asked for a
     //? recursive listing and received top-level entries, which explains itself.
@@ -147,7 +153,7 @@ export const treeTool = defineTool({
     const base = {
       ref,
       path: normalizedPath ?? null,
-      total_entries: all.length,
+      total_entries: input.summary_only ? all.length : matched.length,
       summary,
       truncated,
       api_truncated: data.truncated,
@@ -187,8 +193,8 @@ export const treeTool = defineTool({
     }
     return {
       ...base,
-      entries: all.slice(0, maxEntries),
-      returned_entries: Math.min(all.length, maxEntries),
+      entries: matched.slice(0, maxEntries),
+      returned_entries: Math.min(matched.length, maxEntries),
       ...(meta !== undefined ? { meta } : {}),
     };
   },

@@ -183,3 +183,28 @@ function clipToByteBudget(text: string, max: number): string {
 function isContinuation(byte: number): boolean {
   return (byte & 0xc0) === 0x80;
 }
+
+//* A glob is caller-supplied text, so every regex metacharacter is escaped
+//* before compilation; only **, * and ? keep their glob meaning.
+export function matchGlob(path: string, pattern: string): boolean {
+  const source = path.replace(/^\/+|\/+$/g, "");
+  let expression = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index] as string;
+    if (char === "*") {
+      //? A double star crosses directory separators; a single star stays within
+      //* one segment so "src/*.ts" cannot also match "src/deep/x.ts".
+      if (pattern[index + 1] === "*") {
+        expression += ".*";
+        index += 1;
+      } else {
+        expression += "[^/]*";
+      }
+    } else if (char === "?") {
+      expression += "[^/]";
+    } else {
+      expression += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`${expression}$`).test(source);
+}

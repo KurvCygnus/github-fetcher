@@ -486,3 +486,138 @@ describe("github_tree path normalization", () => {
     expect(client.api).not.toHaveBeenCalled();
   });
 });
+
+describe("github_tree glob filtering", () => {
+  function okClient(data: unknown): GitHubApi {
+    return {
+      api: vi.fn(async () => ({
+        data,
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "miss" },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+  }
+
+  const mixed = {
+    sha: "abc",
+    truncated: false,
+    tree: [
+      { path: "docs/a.md", mode: "100644", type: "blob", size: 1, sha: "d1" },
+      { path: "docs/b.md", mode: "100644", type: "blob", size: 1, sha: "d2" },
+      { path: "src/a.ts", mode: "100644", type: "blob", size: 2, sha: "f1" },
+      { path: "src/b.ts", mode: "100644", type: "blob", size: 2, sha: "f2" },
+      { path: "src/c.ts", mode: "100644", type: "blob", size: 2, sha: "f3" },
+    ],
+  };
+
+  it("filters the mapped entries before the cap and reports post-glob totals", async () => {
+    const client = okClient(mixed);
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", glob: "src/*", max_entries: 2 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(client.api).toHaveBeenCalledTimes(1);
+    const snapshot = output as {
+      entries: Array<{ path: string; type: string; size: number | null; sha: string }>;
+      total_entries: number;
+      returned_entries: number;
+      summary: { files: number; dirs: number; symlinks: number; submodules: number };
+      truncated: boolean;
+      api_truncated: boolean;
+      hint?: string;
+    };
+    //? The first two API entries are docs/* and fail the glob; a cap applied
+    //* before filtering would return an empty list instead of these two.
+    expect(snapshot.entries).toEqual([
+      { path: "src/a.ts", type: "file", size: 2, sha: "f1" },
+      { path: "src/b.ts", type: "file", size: 2, sha: "f2" },
+    ]);
+    expect(snapshot.total_entries).toBe(3);
+    expect(snapshot.returned_entries).toBe(2);
+    expect(snapshot.summary).toEqual({ files: 5, dirs: 0, symlinks: 0, submodules: 0 });
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.api_truncated).toBe(false);
+    expect(snapshot.hint).toBe("increase max_entries or narrow path/ref");
+  });
+
+  it("reports zero matches without truncating", async () => {
+    const client = okClient(mixed);
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", glob: "nope/*" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const snapshot = output as {
+      entries: unknown[];
+      total_entries: number;
+      returned_entries: number;
+      truncated: boolean;
+    };
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.total_entries).toBe(0);
+    expect(snapshot.returned_entries).toBe(0);
+    expect(snapshot.truncated).toBe(false);
+  });
+
+  it("keeps the GitHub-truncation hint when a post-glob cap also applies", async () => {
+    const client = okClient({ sha: "abc", truncated: true, tree: mixed.tree });
+    const output = await treeTool.handler(
+      { repo: REPO, ref: "main", glob: "src/*", max_entries: 1 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const snapshot = output as {
+      total_entries: number;
+      returned_entries: number;
+      truncated: boolean;
+      api_truncated: boolean;
+      hint?: string;
+    };
+    expect(snapshot.total_entries).toBe(3);
+    expect(snapshot.returned_entries).toBe(1);
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.api_truncated).toBe(true);
+    expect(snapshot.hint).toBe("narrow path/ref; GitHub truncated the tree");
+  });
+
+  it("leaves summary_only full-tree and ignores the glob there", async () => {
+    const client = okClient(mixed);
+    const plain = await treeTool.handler(
+      { repo: REPO, ref: "main", summary_only: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const globbed = await treeTool.handler(
+      { repo: REPO, ref: "main", summary_only: true, glob: "src/*", max_entries: 1 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    //? summary_only has no entry list to filter: its totals describe the whole
+    //* API tree, so the glob and max_entries leave the answer byte-identical.
+    expect(globbed).toEqual(plain);
+    const snapshot = globbed as {
+      total_entries: number;
+      summary: { files: number; dirs: number; symlinks: number; submodules: number };
+      total_bytes: number;
+      top_dirs: unknown[];
+      truncated: boolean;
+    };
+    expect(snapshot.total_entries).toBe(5);
+    expect(snapshot.summary).toEqual({ files: 5, dirs: 0, symlinks: 0, submodules: 0 });
+    expect(snapshot.total_bytes).toBe(8);
+    expect(snapshot.top_dirs).toEqual([
+      { path: "src", files: 3, bytes: 6 },
+      { path: "docs", files: 2, bytes: 2 },
+    ]);
+    expect(snapshot.truncated).toBe(false);
+    expect("entries" in globbed).toBe(false);
+    expect("returned_entries" in globbed).toBe(false);
+  });
+
+  it("enforces the glob bounds through the schema", () => {
+    const schema = z.object(treeTool.inputSchema);
+    expect(schema.safeParse({ repo: "o/r", glob: "" }).success).toBe(false);
+    expect(schema.safeParse({ repo: "o/r", glob: "a".repeat(201) }).success).toBe(false);
+    expect(schema.safeParse({ repo: "o/r", glob: "*.ts" }).success).toBe(true);
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cacheKey, readCachedTree } from "../../src/core/cache.js";
 import { GithubError } from "../../src/core/errors.js";
-import { encodePath, notFoundWithHint, truncateText } from "../../src/tools/util.js";
+import { encodePath, matchGlob, notFoundWithHint, truncateText } from "../../src/tools/util.js";
 import { memoryCacheStore, seedCacheTree } from "../helpers.js";
 
 describe("truncateText", () => {
@@ -246,5 +246,35 @@ describe("encodePath", () => {
     expect(() => encodePath("./")).toThrow();
     expect(() => encodePath("..")).toThrow();
     expect(() => encodePath("src/../x")).toThrow();
+  });
+});
+
+describe("matchGlob", () => {
+  it("matches across segments with ** and within one segment with *", () => {
+    expect(matchGlob("src/deep/nested.ts", "**/nested.ts")).toBe(true);
+    expect(matchGlob("src/index.ts", "src/*.ts")).toBe(true);
+    //? A * is a within-segment wildcard, so it cannot swallow the slash in a
+    //* nested path; ** is the token that crosses directory boundaries.
+    expect(matchGlob("src/deep/x.ts", "src/*.ts")).toBe(false);
+    expect(matchGlob("src/README.md", "*")).toBe(false);
+  });
+
+  it("escapes every regex metacharacter in the pattern as a literal", () => {
+    expect(matchGlob("src/(a)/x.ts", "src/(a)/*.ts")).toBe(true);
+    //? ? is the only single-character token; a literal + in the pattern stays
+    //* a literal + rather than a regex quantifier.
+    expect(matchGlob("src/a+b.c", "src/a?b.c")).toBe(true);
+    //? An unbalanced regex metacharacter must filter to zero matches, never
+    //* throw while building the RegExp.
+    expect(matchGlob("plain", "[bad")).toBe(false);
+  });
+
+  it("matches exactly one character with ?", () => {
+    expect(matchGlob("src/a/b.c", "src/?/b.c")).toBe(true);
+    expect(matchGlob("src/ab/b.c", "src/?/b.c")).toBe(false);
+  });
+
+  it("normalizes leading and trailing slashes on the path", () => {
+    expect(matchGlob("/src/index.ts/", "src/*.ts")).toBe(true);
   });
 });

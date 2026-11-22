@@ -152,6 +152,42 @@ describe("runCli", () => {
     expect(out.text()).toBe("");
   });
 
+  it("passes --glob through the tree subcommand as the entry-list filter", async () => {
+    const out = capture();
+    const err = capture();
+    const treeCtx: ToolContext = {
+      ...ctx,
+      client: {
+        api: vi.fn(async () => ({
+          data: {
+            sha: "abc",
+            truncated: false,
+            tree: [
+              { path: "src/a.md", mode: "100644", type: "blob", size: 1, sha: "m1" },
+              { path: "src/b.ts", mode: "100644", type: "blob", size: 2, sha: "t1" },
+            ],
+          },
+          headers: new Headers(),
+          status: 200,
+          contentType: "application/json",
+        })),
+        apiRaw: vi.fn(),
+        raw: vi.fn(),
+      } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["tree", "o/r", "--ref", "main", "--glob", "**/*.md"], {
+      createRuntime: async () => treeCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(out.text())).toMatchObject({
+      total_entries: 1,
+      returned_entries: 1,
+      entries: [{ path: "src/a.md", type: "file" }],
+    });
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();
