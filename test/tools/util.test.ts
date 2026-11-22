@@ -277,4 +277,30 @@ describe("matchGlob", () => {
   it("normalizes leading and trailing slashes on the path", () => {
     expect(matchGlob("/src/index.ts/", "src/*.ts")).toBe(true);
   });
+
+  it("matches root-level and nested paths with **/*.md", () => {
+    //* A leading **/ must contribute zero segments, so a repo-root README.md
+    //* matches the documented **/*.md example.
+    expect(matchGlob("README.md", "**/*.md")).toBe(true);
+    expect(matchGlob("src/a.md", "**/*.md")).toBe(true);
+    expect(matchGlob("src/a.txt", "**/*.md")).toBe(false);
+  });
+
+  it("treats segment-initial **/ as zero-or-more segments", () => {
+    expect(matchGlob("src/x", "**/x/")).toBe(true);
+    expect(matchGlob("x", "**/x")).toBe(true);
+    expect(matchGlob("src/deep/x", "**/x")).toBe(true);
+  });
+
+  it("treats trailing /** as zero-or-more descendants", () => {
+    expect(matchGlob("x/a", "x/**")).toBe(true);
+    expect(matchGlob("x", "x/**")).toBe(true);
+    expect(matchGlob("dev-overlay/a/b", "**/dev-overlay/**")).toBe(true);
+    expect(matchGlob("dev-overlay", "**/dev-overlay/**")).toBe(true);
+  });
+
+  it("normalizes leading and trailing slashes on the pattern", () => {
+    expect(matchGlob("src/index.ts", "/src/*.ts")).toBe(true);
+    expect(matchGlob("src/index.ts", "/src/*.ts/")).toBe(true);
+  });
 });

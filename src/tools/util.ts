@@ -186,24 +186,47 @@ function isContinuation(byte: number): boolean {
 
 //* A glob is caller-supplied text, so every regex metacharacter is escaped
 //* before compilation; only **, * and ? keep their glob meaning.
+//* Slashes are normalized on both sides so a pattern matches a repo-root-relative
+//* path regardless of how the caller spelled the leading or trailing separator.
 export function matchGlob(path: string, pattern: string): boolean {
   const source = path.replace(/^\/+|\/+$/g, "");
+  const normalized = pattern.replace(/^\/+|\/+$/g, "");
   let expression = "^";
-  for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern[index] as string;
-    if (char === "*") {
-      //? A double star crosses directory separators; a single star stays within
-      //* one segment so "src/*.ts" cannot also match "src/deep/x.ts".
-      if (pattern[index + 1] === "*") {
-        expression += ".*";
+  let index = 0;
+  while (index < normalized.length) {
+    const char = normalized[index] as string;
+    //* A run of two or more stars is a single ** token; collapsing the run keeps
+    //* one cross-segment wildcard instead of stacking multiple .* quantifiers.
+    if (char === "*" && normalized[index + 1] === "*") {
+      while (normalized[index] === "*") index += 1;
+      //* A ** on a segment boundary absorbs that boundary, so **/x and **/*.md
+      //* also match a bare x or a repo-root README.md with zero leading segments.
+      if (normalized[index] === "/") {
+        expression += "(?:.*/)?";
         index += 1;
       } else {
-        expression += "[^/]*";
+        expression += ".*";
       }
+      continue;
+    }
+    //* A trailing /** matches zero or more descendants, so x/** matches both x
+    //* itself and x/a; the slash is folded into the optional group.
+    if (char === "/" && /^\*{2,}$/.test(normalized.slice(index + 1))) {
+      expression += "(?:/.*)?";
+      index = normalized.length;
+      continue;
+    }
+    //* A single star stays within one segment so "src/*.ts" cannot also match
+    //* "src/deep/x.ts"; ? matches exactly one non-slash character.
+    if (char === "*") {
+      expression += "[^/]*";
+      index += 1;
     } else if (char === "?") {
       expression += "[^/]";
+      index += 1;
     } else {
       expression += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      index += 1;
     }
   }
   return new RegExp(`${expression}$`).test(source);
