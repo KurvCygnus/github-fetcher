@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `github_commits` accepts `first` to serve the oldest page of the history instead of the newest, resolving the final page from the Link `last` rel in at most two calls; combined with `path`, it hunts creation commits.
 - CLI usage errors carry a recovery `hint` (the usage line plus the specific convention that fixes the mistake), and top-level help lists every subcommand's arg shape with `<angle>` required and `[square]` optional positionals and the bare-boolean versus `--flag value` conventions.
 - MCP error results carry the error envelope on the text channel: a `content` text block mirrors the same compact JSON as `structuredContent`, so text-only clients and error banners surface the real code and message.
+- A local HTTP daemon for clients that cannot use stdio: `github-fetcher daemon start|stop|status` manages a loopback listener on port `41873` (overridden by `GITHUB_MCP_DAEMON_PORT`), and `init --transport http` writes an OpenCode remote MCP entry for the `/mcp` endpoint. The bearer token and ref pins are isolated per MCP session.
 
 ### Changed
 

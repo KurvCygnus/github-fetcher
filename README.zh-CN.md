@@ -161,6 +161,22 @@ VS Code, 加到 `.vscode/mcp.json`:
 - 删除最后一个条目后, 如果配置文件会变成空文件, 该文件会被删除; 结果中标记 `deleted: true`, 备份保留下来作为恢复副本. 存在顶层键或同级条目时文件会保留.
 - ZCode 有意不支持: 它不是适配器, `init` 不会提供它, `remove` 也不会读写它的配置.
 
+### 本地 daemon
+
+stdio 传输无需任何设置. 需要通过 HTTP 连接的客户端改用一个后台 daemon, 它只在 loopback 上提供同样的 41 个工具. 三个命令是:
+
+    github-fetcher daemon start
+    github-fetcher daemon status
+    github-fetcher daemon stop
+
+`daemon start` 是幂等的: 如果 daemon 已经在运行, 会直接报告现有实例, 而不会启动第二个监听. 它会在 `<user config dir>/github-fetcher/` 下写入状态文件和同目录的 token 文件; `daemon stop` 请求停止端点并删除这两个文件. `daemon status` 报告 daemon 是否在运行, 以及 pid, 端口, 版本, 会话数和运行时间. 监听默认绑定到 `127.0.0.1` 的 `41873` 端口; 设置 `GITHUB_MCP_DAEMON_PORT` 可以修改. `serve --daemon` 是 `daemon start` 启动的内部入口.
+
+MCP 端点是 `http://127.0.0.1:41873/mcp` (使用配置中的端口). 每个请求都需要 `Authorization: Bearer <token>` 头. token 在启动时生成, 保存在同目录的 token 文件里, 不会写入状态文件; `/health` 和 `POST /daemon/stop` 同样需要 bearer 校验.
+
+`github-fetcher init --transport http` 会启动 daemon, 并写入一条 OpenCode remote MCP 条目, 指向 `/mcp` URL, 并从 token 文件读取 bearer token, 因此客户端配置里不会出现秘密. 其他适配器没有 remote 条目, 会被跳过并给出警告.
+
+Token 和 ref pin 是按会话隔离的: 每个 MCP 会话都有独立的凭据和 pin 存储, 一个会话的 token 或 pin 不会泄漏到另一个会话. 其余所有设置都来自 daemon 的环境变量.
+
 ## 限制
 
 - 从构造上只读: 不支持写操作, GraphQL, clone 或 archive 工具.

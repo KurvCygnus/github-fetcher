@@ -161,6 +161,22 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 - Removing the last entry deletes a configuration file that would become empty; the result reports `deleted: true`, and the backup remains as the recovery copy. A top-level key or a sibling entry keeps the file.
 - ZCode is deliberately unsupported: it is not an adapter, so `init` never offers it and `remove` never reads or writes its configuration.
 
+### Local daemon
+
+The stdio transport needs no setup. Clients that connect over HTTP instead use a background daemon that serves the same 41 tools on loopback only. The three commands are:
+
+    github-fetcher daemon start
+    github-fetcher daemon status
+    github-fetcher daemon stop
+
+`daemon start` is idempotent: an already-running daemon is reported back instead of a second listener being opened. It writes a state file and a sibling token file under `<user config dir>/github-fetcher/`; `daemon stop` posts to the stop endpoint and removes both files. `daemon status` reports whether the daemon is running along with its pid, port, version, session count, and uptime. The listener binds to `127.0.0.1` on port `41873` by default; set `GITHUB_MCP_DAEMON_PORT` to change it. `serve --daemon` is the internal entry point that `daemon start` launches.
+
+The MCP endpoint is `http://127.0.0.1:41873/mcp` (using the configured port). Every request needs an `Authorization: Bearer <token>` header. The token is generated at start and stored in the sibling token file, never in the state file; `/health` and `POST /daemon/stop` are bearer-checked as well.
+
+`github-fetcher init --transport http` starts the daemon and writes an OpenCode remote MCP entry that points at the `/mcp` URL and reads the bearer token from the token file, so no secret lands in the client configuration. Other adapters have no remote entry and are skipped with a warning.
+
+Tokens and ref pins are per session: every MCP session gets its own credential and pin store, so one session's token or pin never leaks into another. All other settings come from the daemon environment.
+
 ## Limitations
 
 - Read-only by design: no writes, no GraphQL, no clone or archive tools.

@@ -27,6 +27,49 @@ lines.on("line", (line) => {
 });
 child.stderr.on("data", (chunk) => process.stderr.write(chunk));
 
+let daemonChild = undefined;
+const RPC_TIMEOUT_MS = 5000;
+
+async function waitForDaemon(base, token, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const response = await fetch(`${base}/health`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(1500),
+      });
+      if (response.ok) {
+        const health = await response.json();
+        if (health?.status === "ok") return health;
+      }
+    } catch {
+      //* A refused connection before the listener binds is expected; retry.
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`daemon health check timed out after ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+function waitForExit(proc, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve();
+      return;
+    }
+    let timer;
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    timer = setTimeout(() => {
+      proc.off("exit", onExit);
+      reject(new Error("daemon exit timed out"));
+    }, timeoutMs);
+    proc.once("exit", onExit);
+  });
+}
+
 function request(id, method, params) {
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   return new Promise((resolve, reject) => {
@@ -37,6 +80,10 @@ function request(id, method, params) {
 
 const timer = setTimeout(() => {
   child.kill();
+  //* process.exit skips finally, so the daemon must be signalled here as well.
+  if (daemonChild !== undefined && daemonChild.exitCode === null && daemonChild.signalCode === null) {
+    daemonChild.kill();
+  }
   console.error("smoke timeout");
   process.exit(1);
 }, 30000);
@@ -84,8 +131,87 @@ try {
   if (probeMatches.length !== 1 || probeMatches[0]?.line !== 3) {
     throw new Error(`grep worker parity probe expected one match on line 3, got ${JSON.stringify(parity.result)}`);
   }
+
+  //* HTTP handshake: prove the built daemon serves the same toolset over
+  //* bearer-authed loopback HTTP, so a transport regression fails the smoke.
+  const daemonToken = "smoke-daemon-token";
+  const daemonPort = 41973;
+  const base = `http://127.0.0.1:${daemonPort}`;
+  daemonChild = spawn(process.execPath, [entry, "serve", "--daemon"], {
+    env: {
+      ...process.env,
+      GITHUB_CACHE: "memory",
+      GITHUB_PROXY_MODE: "direct",
+      GITHUB_MCP_DAEMON_TOKEN: daemonToken,
+      GITHUB_MCP_DAEMON_PORT: String(daemonPort),
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+  });
+  daemonChild.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+
+  const health = await waitForDaemon(base, daemonToken, 15000);
+  if (health.port !== daemonPort) {
+    throw new Error(`daemon port mismatch: ${JSON.stringify(health)}`);
+  }
+  const rpcHeaders = {
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+    authorization: `Bearer ${daemonToken}`,
+  };
+  const initResponse = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: rpcHeaders,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "smoke-http", version: "0.0.0" },
+      },
+    }),
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+  });
+  if (!initResponse.ok) throw new Error(`HTTP initialize failed: ${initResponse.status}`);
+  const initBody = await initResponse.json();
+  if (!initBody.result) throw new Error(`HTTP initialize missing result: ${JSON.stringify(initBody)}`);
+  const sessionId = initResponse.headers.get("mcp-session-id");
+  if (!sessionId) throw new Error("HTTP initialize missing mcp-session-id header");
+
+  const ready = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: { ...rpcHeaders, "mcp-session-id": sessionId },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+  });
+  if (!ready.ok) throw new Error(`HTTP initialized notification failed: ${ready.status}`);
+
+  const listResponse = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: { ...rpcHeaders, "mcp-session-id": sessionId },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+  });
+  if (!listResponse.ok) throw new Error(`HTTP tools/list failed: ${listResponse.status}`);
+  const listBody = await listResponse.json();
+  const httpTools = listBody.result?.tools ?? [];
+  if (httpTools.length !== 41) throw new Error(`HTTP tools/list expected 41 tools, got ${httpTools.length}`);
+
+  const stopResponse = await fetch(`${base}/daemon/stop`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${daemonToken}` },
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+  });
+  if (!stopResponse.ok) throw new Error(`daemon stop failed: ${stopResponse.status}`);
+  await waitForExit(daemonChild, 5000);
+
   console.log(`SMOKE OK ${tools.length} tools`);
 } finally {
   clearTimeout(timer);
   child.kill();
+  if (daemonChild !== undefined && daemonChild.exitCode === null && daemonChild.signalCode === null) {
+    daemonChild.kill();
+  }
 }
