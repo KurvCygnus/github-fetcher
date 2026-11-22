@@ -59,7 +59,7 @@ export const commitTool = defineTool({
     //* always costs exactly the one call the description promises; HEAD keeps
     //* that constant when neither a ref nor a pin anchors it (the default
     //* branch tip). The pin itself adds no upstream call.
-    const pinned = getPinnedRef(`${owner}/${name}`);
+    const pinned = getPinnedRef(`${owner}/${name}`, ctx);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const ref = input.ref ?? usedPinned ?? "HEAD";
     const result = await ctx.client.api<CommitDetailResponse>(

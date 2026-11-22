@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
 import { GithubError } from "../../src/core/errors.js";
+import { createPinStore } from "../../src/core/pin-store.js";
 import { clearPinnedRef, getPinnedRef, pinTool, setPinnedRef } from "../../src/tools/pin.js";
 import { makeConfig } from "../helpers.js";
 
@@ -161,5 +162,15 @@ describe("github_pin_ref", () => {
     await pinTool.handler({ repo: REPO, ref: "main" }, ctxFor(clientForRoutes({ main: SHA_RESOLVED })));
     expect(getPinnedRef("o/r")).toEqual({ ref: "main", sha: "sha-o-r" });
     expect(getPinnedRef(REPO)).toEqual({ ref: "main", sha: SHA_RESOLVED });
+  });
+
+  it("keeps pinned refs isolated between contexts", () => {
+    const ctxA = { ...ctxFor(clientForRoutes({})), pins: createPinStore() };
+    const ctxB = { ...ctxFor(clientForRoutes({})), pins: createPinStore() };
+    setPinnedRef("o/r", "main", "sha-a", ctxA);
+    expect(getPinnedRef("o/r", ctxA)).toEqual({ ref: "main", sha: "sha-a" });
+    expect(getPinnedRef("o/r", ctxB)).toBeUndefined();
+    clearPinnedRef("o/r", ctxA);
+    expect(getPinnedRef("o/r", ctxA)).toBeUndefined();
   });
 });

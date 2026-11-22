@@ -1,27 +1,37 @@
 import { z } from "zod";
+import type { ToolContext } from "../core/context.js";
 import type { ApiResult, GitHubApi } from "../core/github.js";
 import { GithubError } from "../core/errors.js";
+import { createPinStore } from "../core/pin-store.js";
+import type { PinStore } from "../core/pin-store.js";
 import { defineTool } from "./define.js";
 import type { ResponseMeta } from "./meta.js";
 import { responseMeta } from "./meta.js";
 import { githubQuery, parseRepo } from "./util.js";
 
-//? Session-scoped pin state, one entry per owner/name. The stdio server process
-//* lives for the whole client session, so the map survives every call within a
-//* session and resets when the server restarts; the tool description documents
-//* that loss, and tests reset entries through clearPinnedRef between cases.
-const PINNED = new Map<string, { ref: string; sha: string }>();
+//? One default store backs callers that omit ctx: the stdio path and legacy
+//* tests that pin through the helpers without a ToolContext. Session-aware
+//* callers pass a ctx whose pins store scopes entries to that session, so a pin
+//* in one session never reaches another.
+const DEFAULT_PINS = createPinStore();
 
-export function getPinnedRef(repo: string): { ref: string; sha: string } | undefined {
-  return PINNED.get(repo);
+function storeFor(ctx?: ToolContext): PinStore {
+  return ctx?.pins ?? DEFAULT_PINS;
 }
 
-export function setPinnedRef(repo: string, ref: string, sha: string): void {
-  PINNED.set(repo, { ref, sha });
+export function getPinnedRef(
+  repo: string,
+  ctx?: ToolContext,
+): { ref: string; sha: string } | undefined {
+  return storeFor(ctx).get(repo);
 }
 
-export function clearPinnedRef(repo: string): void {
-  PINNED.delete(repo);
+export function setPinnedRef(repo: string, ref: string, sha: string, ctx?: ToolContext): void {
+  storeFor(ctx).set(repo, ref, sha);
+}
+
+export function clearPinnedRef(repo: string, ctx?: ToolContext): void {
+  storeFor(ctx).delete(repo);
 }
 
 interface RepoMetaResponse {
@@ -83,7 +93,7 @@ export const pinTool = defineTool({
     const { owner, name } = parseRepo(input.repo);
     const repo = `${owner}/${name}`;
     if (input.unpin === true) {
-      clearPinnedRef(repo);
+      clearPinnedRef(repo, ctx);
       return { repo, pinned: false };
     }
     //? Three resolution paths. An explicit full sha IS the commit sha, so it
@@ -118,7 +128,7 @@ export const pinTool = defineTool({
       sha = resolved.sha;
       meta = responseMeta(lookup, 2);
     }
-    setPinnedRef(repo, ref, sha);
+    setPinnedRef(repo, ref, sha, ctx);
     return {
       repo,
       ref,

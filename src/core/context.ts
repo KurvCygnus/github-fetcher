@@ -7,6 +7,8 @@ import type { Config } from "./config.js";
 import { GithubClient } from "./github.js";
 import type { GitHubApi } from "./github.js";
 import { HttpClient } from "./http.js";
+import { createPinStore } from "./pin-store.js";
+import type { PinStore } from "./pin-store.js";
 import { resolveProxy } from "./proxy.js";
 
 //? env and warn are injectable so tests can wire an offline context (env token,
@@ -20,6 +22,10 @@ export interface ToolContext {
   //* degrade to an undecorated error when it is absent, and a test can inject
   //* any CacheStore (typically an in-memory one) here.
   cache?: CacheStore | undefined;
+  //? Session-scoped pin store, optional so existing ctx literals stay valid;
+  //* pin helpers fall back to the module-default store when it is absent. The
+  //* daemon builds one context per session, so each context gets its own store.
+  pins?: PinStore | undefined;
 }
 
 export async function createToolContext(
@@ -37,5 +43,5 @@ export async function createToolContext(
   });
   const http = new HttpClient({ config, auth, proxy });
   const client = new GithubClient({ http, cache, config, authFingerprint: fingerprint });
-  return { client, config, authFingerprint: fingerprint, cache };
+  return { client, config, authFingerprint: fingerprint, cache, pins: createPinStore() };
 }

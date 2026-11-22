@@ -163,7 +163,7 @@ export const filesBatchTool = defineTool({
     //? Session pin honoring: an explicit ref always wins, a pinned sha is used
     //* only when the caller omitted ref, and the pinned sha passes through
     //* resolveRef untouched (no extra repo lookup). fresh never unpins.
-    const pinned = getPinnedRef(`${owner}/${name}`);
+    const pinned = getPinnedRef(`${owner}/${name}`, ctx);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
     const settled = await Promise.allSettled(

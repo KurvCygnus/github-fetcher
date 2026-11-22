@@ -52,7 +52,7 @@ export const commitsTool = defineTool({
     //* ref travels as the sha query parameter), so the pinned sha fills that
     //* parameter only when the caller omitted ref. An explicit ref always wins
     //* and fresh never unpins; the pin itself adds no upstream call.
-    const pinned = getPinnedRef(`${owner}/${name}`);
+    const pinned = getPinnedRef(`${owner}/${name}`, ctx);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const sha = input.ref ?? usedPinned ?? undefined;
     const requestPath = `/repos/${owner}/${name}/commits`;
