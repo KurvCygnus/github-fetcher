@@ -2,9 +2,12 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
+import { Writable } from "node:stream";
 import { createTokenResolver } from "../core/auth.js";
 import { loadConfig } from "../core/config.js";
+import { daemonTokenPath } from "../daemon/paths.js";
 import { CliUsageError } from "./argv.js";
+import { DEFAULT_DAEMON_PORT, ensureDaemon } from "./daemon.js";
 import { ADAPTERS } from "./clients/index.js";
 import type { ClientAdapter } from "./clients/index.js";
 import {
@@ -26,6 +29,7 @@ export interface InitOptions {
   name: string;
   nameExplicit?: boolean | undefined;
   dryRun: boolean;
+  transport?: "stdio" | "http" | undefined;
 }
 
 export type SelectFn = (
@@ -43,6 +47,10 @@ export interface InitDeps {
   input?: NodeJS.ReadStream | undefined;
   //? Injection seam for the TUI: tests exercise cancel/confirm without a real terminal.
   select?: SelectFn | undefined;
+  //* Both seams keep the HTTP path offline: no daemon spawn and no real adapter set
+  //* is required to verify the config that would be written.
+  ensureDaemon?: typeof ensureDaemon | undefined;
+  adapters?: readonly ClientAdapter[] | undefined;
 }
 
 export type InitAction =
@@ -72,7 +80,7 @@ interface SelectedAdapter {
   explicit: boolean;
 }
 
-export const INIT_USAGE = "Usage: github-fetcher init [--client id,id] [--all] [--name github] [--dry-run]";
+export const INIT_USAGE = "Usage: github-fetcher init [--client id,id] [--all] [--name github] [--dry-run] [--transport stdio|http]";
 
 export function parseInitArgs(argv: string[]): InitOptions {
   const clients: string[] = [];
@@ -80,6 +88,7 @@ export function parseInitArgs(argv: string[]): InitOptions {
   let name = DEFAULT_NAME;
   let nameExplicit = false;
   let dryRun = false;
+  let transport: "stdio" | "http" = "stdio";
 
   for (let index = 0; index < argv.length; index++) {
     //? The loop bound guarantees the token exists; noUncheckedIndexedAccess cannot see it.
@@ -90,6 +99,18 @@ export function parseInitArgs(argv: string[]): InitOptions {
     }
     if (token === "--dry-run") {
       dryRun = true;
+      continue;
+    }
+    if (token === "--transport") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new CliUsageError(`flag ${token} requires a value`);
+      }
+      if (value !== "stdio" && value !== "http") {
+        throw new CliUsageError(`invalid --transport: ${value}`);
+      }
+      transport = value;
+      index += 1;
       continue;
     }
     if (token === "--client" || token === "--name") {
@@ -111,7 +132,7 @@ export function parseInitArgs(argv: string[]): InitOptions {
   }
 
   validateName(name);
-  return { clients, all, name, nameExplicit, dryRun };
+  return { clients, all, name, nameExplicit, dryRun, transport };
 }
 
 function usageError(deps: InitDeps, message: string): number {
@@ -119,11 +140,11 @@ function usageError(deps: InitDeps, message: string): number {
   return 2;
 }
 
-function selectByFlags(requested: readonly string[], all: boolean): SelectedAdapter[] {
+function selectByFlags(adapters: readonly ClientAdapter[], requested: readonly string[], all: boolean): SelectedAdapter[] {
   const named = new Set(requested);
   //* No ids and no --all (for example bare --dry-run) sweeps every adapter without consent,
   //* so those adapters stay explicit: false and undetected ones are reported not-installed.
-  return ADAPTERS
+  return adapters
     .filter((adapter) => all || named.size === 0 || named.has(adapter.id))
     .map((adapter) => ({ adapter, explicit: named.has(adapter.id) }));
 }
@@ -133,12 +154,13 @@ async function selectInteractively(
   cwd: string,
   deps: InitDeps,
 ): Promise<SelectedAdapter[] | null> {
+  const adapters = deps.adapters ?? ADAPTERS;
   const detected = new Set(
-    ADAPTERS
+    adapters
       .filter((adapter) => adapter.candidates(home, cwd).some((path) => existsSync(path)))
       .map((adapter) => adapter.id),
   );
-  const items: TuiItem[] = ADAPTERS.map((adapter) => ({
+  const items: TuiItem[] = adapters.map((adapter) => ({
     id: adapter.id,
     label: adapter.label,
     note: detected.has(adapter.id) ? "detected" : "not detected, will create",
@@ -151,7 +173,7 @@ async function selectInteractively(
   );
   if (picked === null) return null;
   const pickedIds = new Set(picked);
-  return ADAPTERS
+  return adapters
     .filter((adapter) => pickedIds.has(adapter.id))
     .map((adapter) => ({ adapter, explicit: true }));
 }
@@ -162,10 +184,30 @@ interface ApplyContext {
   dryRun: boolean;
   home: string;
   cwd: string;
+  stderr: NodeJS.WritableStream;
+  remote?: { url: string; tokenPath: string } | undefined;
+}
+
+function entryFor(adapter: ClientAdapter, name: string, context: ApplyContext): unknown | null {
+  if (context.remote === undefined) return adapter.entry(name);
+  const entry = adapter.remoteEntry?.(name, context.remote) ?? null;
+  if (entry === null) {
+    context.stderr.write(`warning: ${adapter.label} (${adapter.id}) cannot represent a remote HTTP server; skipped\n`);
+  }
+  return entry;
 }
 
 async function createFresh(adapter: ClientAdapter, path: string, context: ApplyContext): Promise<InitResult> {
-  const entry = adapter.entry(context.name);
+  const entry = entryFor(adapter, context.name, context);
+  if (context.remote !== undefined && entry === null) {
+    return {
+      client: adapter.id,
+      path,
+      name: context.name,
+      action: "skipped",
+      message: `${adapter.label} cannot represent a remote HTTP server`,
+    };
+  }
   //* Fresh configs arrive as undefined; every adapter's merge treats that as an empty target.
   const merged = adapter.merge(undefined, context.name, entry);
   if (context.dryRun) {
@@ -190,7 +232,16 @@ async function mergeTarget(adapter: ClientAdapter, path: string, context: ApplyC
       hint: `pass --name <key> to install under a different key`,
     };
   }
-  const entry = adapter.entry(name);
+  const entry = entryFor(adapter, name, context);
+  if (context.remote !== undefined && entry === null) {
+    return {
+      client: adapter.id,
+      path,
+      name,
+      action: "skipped",
+      message: `${adapter.label} cannot represent a remote HTTP server`,
+    };
+  }
   const merged = adapter.merge(existing, name, entry);
   if (adapter.serialize(merged) === raw) {
     return { client: adapter.id, path, name, action: context.dryRun ? "would-skip" : "skipped" };
@@ -242,6 +293,15 @@ async function writeAuthStatus(stderr: NodeJS.WritableStream): Promise<void> {
   stderr.write(`auth: ${token ? "token" : "anonymous"}\n`);
 }
 
+//* A dry run must stay side-effect free, so it resolves the port from the environment
+//* instead of starting a daemon to discover the live one.
+function configuredPort(env: NodeJS.ProcessEnv): number {
+  const raw = env["GITHUB_MCP_DAEMON_PORT"];
+  if (raw === undefined || raw === "") return DEFAULT_DAEMON_PORT;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_DAEMON_PORT;
+}
+
 export async function runInit(arg: InitOptions | string[], deps: InitDeps): Promise<number> {
   //? Help wins over every validation; the parser would otherwise reject the flag as unknown.
   if (Array.isArray(arg) && (arg.includes("--help") || arg.includes("-h"))) {
@@ -262,13 +322,15 @@ export async function runInit(arg: InitOptions | string[], deps: InitDeps): Prom
   const requested = uniqueIds(options.clients ?? []);
   const all = options.all === true;
   const dryRun = options.dryRun === true;
+  const transport = options.transport ?? "stdio";
   const interactive = deps.interactive ?? process.stdin.isTTY === true;
   const home = deps.home ?? homedir();
   const cwd = deps.cwd ?? process.cwd();
+  const adapters = deps.adapters ?? ADAPTERS;
 
   let selected: SelectedAdapter[];
   if (requested.length > 0 || all || dryRun) {
-    selected = selectByFlags(requested, all);
+    selected = selectByFlags(adapters, requested, all);
   } else if (interactive) {
     const picked = await selectInteractively(home, cwd, deps);
     if (picked === null) {
@@ -280,12 +342,40 @@ export async function runInit(arg: InitOptions | string[], deps: InitDeps): Prom
     return usageError(deps, "init needs --client or --all in a non-interactive session");
   }
 
+  let remote: { url: string; tokenPath: string } | undefined;
+  if (transport === "http") {
+    let port: number;
+    if (dryRun) {
+      port = configuredPort(process.env);
+    } else {
+      //* ensureDaemon prints a start JSON line; a silent stdout keeps init's stdout
+      //* reserved for its own JSON result array.
+      const silentStdout = new Writable({
+        write(_chunk, _encoding, callback) {
+          callback();
+        },
+      });
+      port = (await (deps.ensureDaemon ?? ensureDaemon)({
+        env: process.env,
+        home,
+        platform: process.platform,
+        deps: { stdout: silentStdout, stderr: deps.stderr },
+      })).port;
+    }
+    remote = {
+      url: `http://127.0.0.1:${port}/mcp`,
+      tokenPath: daemonTokenPath(process.env, process.platform, home),
+    };
+  }
+
   const context: ApplyContext = {
     name: options.name,
     nameExplicit: options.nameExplicit === true,
     dryRun,
     home,
     cwd,
+    stderr: deps.stderr,
+    remote,
   };
   const results: InitResult[] = [];
   for (const { adapter, explicit } of selected) {

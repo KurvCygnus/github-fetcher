@@ -377,4 +377,21 @@ describe("client adapters", () => {
     const merged = adapter.merge({}, "__proto__", adapter.entry("github"));
     expect(JSON.stringify(merged)).toContain('"__proto__"');
   });
+
+  it("opencode remoteEntry emits the exact HTTP client shape and other adapters have none", () => {
+    const tokenPath = "/home/test/.config/github-fetcher/token";
+    const entry = getAdapter("opencode").remoteEntry?.("github", {
+      url: "http://127.0.0.1:41873/mcp",
+      tokenPath,
+    });
+    expect(entry).toEqual({
+      type: "remote",
+      url: "http://127.0.0.1:41873/mcp",
+      oauth: false,
+      headers: { Authorization: `{file:${tokenPath}}` },
+    });
+    for (const id of ["claude-desktop", "claude-code", "cursor", "vscode", "gemini", "windsurf", "codex"]) {
+      expect(getAdapter(id).remoteEntry).toBeUndefined();
+    }
+  });
 });

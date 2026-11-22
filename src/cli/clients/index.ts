@@ -17,6 +17,9 @@ export interface ClientAdapter {
   remove(existing: unknown, name: string): unknown;
   serialize(obj: unknown): string;
   write(path: string, obj: unknown): Promise<void>;
+  //* A remote client entry is opt-in: absent or null means this client cannot
+  //* point at the HTTP daemon, so init skips it instead of writing a broken config.
+  remoteEntry?(name: string, options: { url: string; tokenPath: string }): unknown | null;
 }
 
 interface JsonSpec {
@@ -25,6 +28,7 @@ interface JsonSpec {
   candidates(home: string, cwd: string): string[];
   container: string[];
   build: (command: [string, ...string[]]) => unknown;
+  remoteEntry?: ClientAdapter["remoteEntry"];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -120,7 +124,7 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
   const leafKey = spec.container.at(-1);
   if (leafKey === undefined) throw new Error(`empty container for ${spec.id}`);
   const serialize = (obj: unknown): string => `${JSON.stringify(obj, null, 2)}\n`;
-  return {
+  const adapter: ClientAdapter = {
     id: spec.id,
     label: spec.label,
     candidates: spec.candidates,
@@ -178,6 +182,8 @@ function jsonAdapter(spec: JsonSpec): ClientAdapter {
       await writeFile(path, serialize(obj), "utf8");
     },
   };
+  if (spec.remoteEntry !== undefined) adapter.remoteEntry = spec.remoteEntry;
+  return adapter;
 }
 
 const opencode = jsonAdapter({
@@ -188,6 +194,14 @@ const opencode = jsonAdapter({
   },
   container: ["mcp"],
   build: (command) => ({ type: "local", command, enabled: true }),
+  remoteEntry: (_name, { url, tokenPath }) => ({
+    type: "remote",
+    url,
+    oauth: false,
+    //* OpenCode substitutes whole files for {file:...}; the sibling token file holds
+    //* exactly the bearer header value, so no secret is written into the config.
+    headers: { Authorization: `{file:${tokenPath}}` },
+  }),
 });
 
 const mcpServersSpec = (id: string, label: string, candidates: JsonSpec["candidates"]): ClientAdapter =>

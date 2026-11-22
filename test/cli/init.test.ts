@@ -3,6 +3,10 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_DAEMON_PORT } from "../../src/cli/daemon.js";
+import { PACKAGE_COMMAND, getAdapter } from "../../src/cli/clients/index.js";
+import type { ClientAdapter } from "../../src/cli/clients/index.js";
+import { daemonTokenPath } from "../../src/daemon/paths.js";
 import { runInit } from "../../src/cli/init.js";
 
 const dirs: string[] = [];
@@ -551,5 +555,159 @@ describe("runInit", () => {
     );
     expect(nameCode).toBe(2);
     expect(nameErr.text()).toContain("invalid --name");
+  }, 300000);
+});
+
+describe("init --transport", () => {
+  it("rejects --transport sse with a usage error", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const err = capture();
+
+    const code = await runInit(
+      ["--client", "opencode", "--transport", "sse"],
+      { stdout: capture().stream, stderr: err.stream, home, cwd, interactive: false },
+    );
+
+    expect(code).toBe(2);
+    expect(err.text()).toContain("Usage: github-fetcher init");
+    expect(err.text()).toContain("--transport");
+  }, 300000);
+
+  it("keeps the default stdio entry byte-identical to an explicit --transport stdio run", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const home2 = await tempDir("ghf-init-home-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    const configPath2 = join(home2, ".config", "opencode", "opencode.json");
+
+    expect(await runInit(
+      ["--client", "opencode"],
+      { stdout: capture().stream, stderr: capture().stream, home, cwd, interactive: false },
+    )).toBe(0);
+    expect(await runInit(
+      ["--client", "opencode", "--transport", "stdio"],
+      { stdout: capture().stream, stderr: capture().stream, home: home2, cwd, interactive: false },
+    )).toBe(0);
+
+    const text = await readFile(configPath, "utf8");
+    expect(await readFile(configPath2, "utf8")).toBe(text);
+    expect(JSON.parse(text).mcp.github).toEqual({ type: "local", command: PACKAGE_COMMAND, enabled: true });
+  }, 300000);
+
+  it("http dry-run reports the exact OpenCode remote entry without starting a daemon", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const previousPort = process.env.GITHUB_MCP_DAEMON_PORT;
+    delete process.env.GITHUB_MCP_DAEMON_PORT;
+    let ensureCalls = 0;
+    try {
+      const out = capture();
+      const err = capture();
+      const code = await runInit(
+        ["--client", "opencode", "--transport", "http", "--dry-run"],
+        {
+          stdout: out.stream,
+          stderr: err.stream,
+          home,
+          cwd,
+          interactive: false,
+          ensureDaemon: async () => {
+            ensureCalls += 1;
+            throw new Error("dry-run must not start a daemon");
+          },
+        },
+      );
+
+      expect(code).toBe(0);
+      expect(ensureCalls).toBe(0);
+      const entries = JSON.parse(out.text());
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ client: "opencode", name: "github", action: "would-create" });
+      expect(entries[0].entry).toEqual({
+        type: "remote",
+        url: `http://127.0.0.1:${DEFAULT_DAEMON_PORT}/mcp`,
+        oauth: false,
+        headers: { Authorization: `{file:${daemonTokenPath(process.env, process.platform, home)}}` },
+      });
+      expect(existsSync(join(home, ".config", "opencode", "opencode.json"))).toBe(false);
+    } finally {
+      if (previousPort === undefined) delete process.env.GITHUB_MCP_DAEMON_PORT;
+      else process.env.GITHUB_MCP_DAEMON_PORT = previousPort;
+    }
+  }, 300000);
+
+  it("non-dry http starts the daemon once, uses its port, and keeps start JSON off stdout", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    let ensureCalls = 0;
+    const out = capture();
+
+    const code = await runInit(
+      ["--client", "opencode", "--transport", "http"],
+      {
+        stdout: out.stream,
+        stderr: capture().stream,
+        home,
+        cwd,
+        interactive: false,
+        ensureDaemon: async (options) => {
+          ensureCalls += 1;
+          options.deps?.stdout.write('{"started":true}\n');
+          return { pid: process.pid, port: 51515, token: "fake", startedAt: "2026-11-22T00:00:00.000Z", version: "0.5.0" };
+        },
+      },
+    );
+
+    expect(code).toBe(0);
+    expect(ensureCalls).toBe(1);
+    expect(out.text()).not.toContain('"started"');
+    expect(JSON.parse(out.text())).toHaveLength(1);
+    const written = JSON.parse(await readFile(join(home, ".config", "opencode", "opencode.json"), "utf8"));
+    expect(written.mcp.github).toEqual({
+      type: "remote",
+      url: "http://127.0.0.1:51515/mcp",
+      oauth: false,
+      headers: { Authorization: `{file:${daemonTokenPath(process.env, process.platform, home)}}` },
+    });
+  }, 300000);
+
+  it("skips an adapter whose remoteEntry returns null with a named warning and no write", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const stub: ClientAdapter = {
+      ...getAdapter("cursor"),
+      label: "NoRemote Adapter",
+      remoteEntry: () => null,
+    };
+    const out = capture();
+    const err = capture();
+    let ensureCalls = 0;
+
+    const code = await runInit(
+      ["--client", "cursor", "--transport", "http", "--dry-run"],
+      {
+        stdout: out.stream,
+        stderr: err.stream,
+        home,
+        cwd,
+        interactive: false,
+        adapters: [stub],
+        ensureDaemon: async () => {
+          ensureCalls += 1;
+          throw new Error("dry-run must not start a daemon");
+        },
+      },
+    );
+
+    expect(code).toBe(0);
+    expect(ensureCalls).toBe(0);
+    expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(false);
+    const entries = JSON.parse(out.text());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ client: "cursor", action: "skipped" });
+    expect(entries[0].entry).toBeUndefined();
+    expect(err.text()).toContain("cursor");
+    expect(err.text()).toContain("NoRemote Adapter");
   }, 300000);
 });
