@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - Unreleased
+
+### Added
+
+- `github_tree` accepts a `glob` to filter returned entry paths: `**` crosses directory separators, `*` stays within one segment, and `?` matches one character. The filter is an entry-list filter, so it runs before `max_entries` and is ignored under `summary_only`, where there is no entry list to filter; `total_entries` and `returned_entries` count matched entries in entries mode.
+- `github_files` per-item success data reports `total_lines`, the whole-file line count measured before the byte budget clips the text (matching `github_file`), with `null` for binary files.
+- `github_commits` accepts `first` to serve the oldest page of the history instead of the newest, resolving the final page from the Link `last` rel in at most two calls; combined with `path`, it hunts creation commits.
+- CLI usage errors carry a recovery `hint` (the usage line plus the specific convention that fixes the mistake), and top-level help lists every subcommand's arg shape with `<angle>` required and `[square]` optional positionals and the bare-boolean versus `--flag value` conventions.
+- MCP error results carry the error envelope on the text channel: a `content` text block mirrors the same compact JSON as `structuredContent`, so text-only clients and error banners surface the real code and message.
+
+### Changed
+
+- CLI usage errors now carry a `hint` on the error envelope's `error` object alongside the code and message (0.5-era envelopes carried the message only), so a script can recover without re-reading help.
+- Tool error results gain a `content` text block mirroring `structuredContent` (0.5-era failures were `structuredContent`-only with an empty `content` array, which text-only clients rendered as a generic error); success results stay `structuredContent`-only.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added
