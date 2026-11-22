@@ -4,17 +4,22 @@ import { toGithubError } from "../core/errors.js";
 import type { ToolContext } from "../core/context.js";
 import type { ToolDefinition } from "../tools/define.js";
 
-//? Single-channel emission: clients read structuredContent, so a JSON text
-//? duplicate doubles the token cost and pushes large responses past client
-//? truncation budgets. content stays a required empty array per the SDK
-//? CallToolResult type; legacy text-only clients accept the empty payload.
+//* Single-channel emission is a SUCCESS-payload rule: a JSON text duplicate
+//* of a large response doubles its token cost and pushes it past client
+//* truncation budgets, so success leaves content as the SDK-required empty
+//* array. Error envelopes are small and must ride both channels: clients that
+//* surface only content[].text otherwise degrade to a generic error banner.
 function success(data: Record<string, unknown>): CallToolResult {
   return { content: [], structuredContent: data };
 }
 
 function failure(error: unknown): CallToolResult {
-  const known = toGithubError(error);
-  return { content: [], isError: true, structuredContent: known.toResult() };
+  const envelope = toGithubError(error).toResult();
+  return {
+    content: [{ type: "text", text: JSON.stringify(envelope) }],
+    isError: true,
+    structuredContent: envelope,
+  };
 }
 
 export function registerTools(
