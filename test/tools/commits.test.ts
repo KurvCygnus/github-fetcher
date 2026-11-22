@@ -301,7 +301,7 @@ describe("github_commits", () => {
     });
   });
 
-  it("first absent keeps the 0.5.0 envelope byte-identical", async () => {
+  it("first absent keeps the existing envelope byte-identical", async () => {
     //? Exact key order and values pin the default path: no pages_in_history,
     //? Link-derived has_more/next_page preserved, single call reported in meta.
     const client = {
