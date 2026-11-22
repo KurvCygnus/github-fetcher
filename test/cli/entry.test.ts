@@ -1,6 +1,17 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { VERSION } from "../../src/core/version.js";
 import { runEntry } from "../../src/cli/entry.js";
+
+const stdioConnect = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../../src/mcp/server.js", () => ({
+  createGithubServer: vi.fn(async () => ({ connect: stdioConnect })),
+}));
+vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
+  StdioServerTransport: class {},
+}));
 
 function stream(): NodeJS.WritableStream & { write: ReturnType<typeof vi.fn> } {
   return { write: vi.fn() } as unknown as NodeJS.WritableStream & { write: ReturnType<typeof vi.fn> };
@@ -44,5 +55,51 @@ describe("cli entry", () => {
     const stderr = stream();
     await expect(runEntry(["nope"], { stdout: stream(), stderr })).resolves.toBe(2);
     expect(stderr.write).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
+  });
+
+  it("still starts the stdio server for bare invocation and plain serve", async () => {
+    const deps = { stdout: stream(), stderr: stream() };
+    const before = stdioConnect.mock.calls.length;
+    await expect(runEntry([], deps)).resolves.toBe(0);
+    await expect(runEntry(["serve"], deps)).resolves.toBe(0);
+    expect(stdioConnect.mock.calls.length - before).toBe(2);
+  });
+
+  it("routes serve --daemon to the HTTP listener without touching stdio", async () => {
+    const startHttp = vi.fn(async () => ({
+      port: 41999,
+      close: vi.fn(async () => {}),
+      sessionCount: () => 0,
+    }));
+    const before = stdioConnect.mock.calls.length;
+    await expect(
+      runEntry(["serve", "--daemon"], {
+        stdout: stream(),
+        stderr: stream(),
+        env: { GITHUB_MCP_DAEMON_TOKEN: "daemon-token", GITHUB_MCP_DAEMON_PORT: "41999" },
+        startHttp,
+      }),
+    ).resolves.toBe(0);
+    expect(startHttp).toHaveBeenCalledWith(expect.objectContaining({ token: "daemon-token", port: 41999 }));
+    expect(stdioConnect.mock.calls.length).toBe(before);
+  });
+
+  it("routes daemon subcommands to the lifecycle CLI", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ghf-entry-"));
+    try {
+      const stdout = stream();
+      await expect(
+        runEntry(["daemon", "status"], {
+          stdout,
+          stderr: stream(),
+          env: { XDG_CONFIG_HOME: dir },
+          home: dir,
+          platform: "linux",
+        }),
+      ).resolves.toBe(0);
+      expect(stdout.write).toHaveBeenCalledWith('{"running":false}\n');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -55,6 +55,9 @@ export async function startDaemonHttp(options: DaemonHttpOptions): Promise<Daemo
       : { env: options.env, createContext: options.createContext },
   );
 
+  let boundPort = 0;
+  let startedAt = 0;
+
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? "/", `http://${HOST}`).pathname;
 
@@ -65,8 +68,11 @@ export async function startDaemonHttp(options: DaemonHttpOptions): Promise<Daemo
       }
       json(res, 200, {
         status: "ok",
+        pid: process.pid,
+        port: boundPort,
         version: options.version,
         sessionCount: registry.size(),
+        uptimeMs: Date.now() - startedAt,
       });
       return;
     }
@@ -158,6 +164,9 @@ export async function startDaemonHttp(options: DaemonHttpOptions): Promise<Daemo
     });
   });
 
+  //* Uptime starts at listener creation so it measures how long the resident
+  //* HTTP service has been reachable, excluding pre-listen setup time.
+  startedAt = Date.now();
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port, HOST, () => {
@@ -167,11 +176,11 @@ export async function startDaemonHttp(options: DaemonHttpOptions): Promise<Daemo
   });
 
   const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : options.port;
+  boundPort = typeof address === "object" && address !== null ? address.port : options.port;
 
   let closed = false;
   return {
-    port,
+    port: boundPort,
     sessionCount: () => registry.size(),
     close: async () => {
       if (closed) return;

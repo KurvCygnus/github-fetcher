@@ -28,6 +28,15 @@ interface ToolListResult {
   tools: Array<{ name: string }>;
 }
 
+interface HealthBody {
+  status: string;
+  pid: number;
+  port: number;
+  version: string;
+  sessionCount: number;
+  uptimeMs: number;
+}
+
 const TOKEN = "daemon-test-token";
 
 const initializeBody = {
@@ -122,7 +131,7 @@ describe("daemon http (loopback integration)", () => {
     return (await res.json()) as RpcResponse<ToolListResult>;
   }
 
-  it("guards /health with the exact bearer token and reports zero sessions", async () => {
+  it("guards /health with the exact bearer token and reports the bound endpoint", async () => {
     const unauthorized = await fetch(`${base}/health`);
     expect(unauthorized.status).toBe(401);
 
@@ -130,8 +139,14 @@ describe("daemon http (loopback integration)", () => {
       headers: { authorization: `Bearer ${TOKEN}` },
     });
     expect(authorized.status).toBe(200);
-    const body = (await authorized.json()) as { sessionCount: number };
+    const body = (await authorized.json()) as HealthBody;
+    expect(body.status).toBe("ok");
+    expect(body.pid).toBe(process.pid);
+    expect(body.port).toBeGreaterThan(0);
+    expect(body.port).toBe(daemon.port);
+    expect(body.version).toBe("0.5.0");
     expect(body.sessionCount).toBe(0);
+    expect(body.uptimeMs).toBeGreaterThanOrEqual(0);
   });
 
   it("rejects an initialize request without the bearer token", async () => {
