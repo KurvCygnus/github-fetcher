@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export interface DaemonState {
@@ -39,9 +39,15 @@ export async function readDaemonState(path: string): Promise<DaemonState | null>
 
 export async function writeDaemonState(path: string, state: DaemonState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  //* The mode applies at file creation on POSIX; Windows ignores it, which is
-  //* non-fatal because the user profile's ACLs guard the file there.
   await writeFile(path, JSON.stringify(state), { mode: 0o600 });
+  //* writeFile's mode only applies at creation, so a leftover state file could
+  //* stay world-readable. chmod tightens it; Windows ignores the read/write bits
+  //* and can reject the call, which is non-fatal under the profile's ACLs.
+  try {
+    await chmod(path, 0o600);
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+  }
 }
 
 export async function removeDaemonState(path: string): Promise<void> {

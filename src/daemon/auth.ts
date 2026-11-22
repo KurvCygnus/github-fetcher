@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const BEARER_PREFIX = "Bearer ";
@@ -21,9 +21,16 @@ export function authorizeBearer(header: string | undefined, token: string): bool
 export async function writeDaemonToken(path: string, token: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   //* {file:...} substitution uses the whole file as the header value, so write
-  //* the exact "Bearer <token>" string with no trailing newline. The mode is
-  //* ignored on Windows, which is non-fatal under the profile's ACLs.
+  //* the exact "Bearer <token>" string with no trailing newline.
   await writeFile(path, BEARER_PREFIX + token, { mode: 0o600 });
+  //* writeFile's mode only applies at creation, so a pre-existing token file could
+  //* stay world-readable. chmod tightens it; Windows ignores the read/write bits
+  //* and can reject the call, which is non-fatal under the profile's ACLs.
+  try {
+    await chmod(path, 0o600);
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+  }
 }
 
 export async function removeDaemonToken(path: string): Promise<void> {

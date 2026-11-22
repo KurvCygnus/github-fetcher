@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { isInitializeRequest, JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js";
 import { authorizeBearer } from "./auth.js";
 import { createSessionRegistry } from "./sessions.js";
 import type { ToolContext } from "../core/context.js";
@@ -136,15 +136,29 @@ export async function startDaemonHttp(options: DaemonHttpOptions): Promise<Daemo
       return;
     }
 
-    //* Only an initialize request may open a session. All other methods need an
-    //* existing id; the explicit checks pin the SDK's 400/404 contract in tests.
+    //* Only an initialize request may open a session. isInitializeRequest accepts
+    //* payloads without a jsonrpc version or id that the SDK rejects later, so the
+    //* JSON-RPC envelope must also validate before any server state is built.
     if (id === undefined || id === "") {
-      if (!isInitializeRequest(parsed)) {
-        plainText(res, 400, "mcp-session-id header is required");
+      if (!isInitializeRequest(parsed) || !JSONRPCMessageSchema.safeParse(parsed).success) {
+        plainText(res, 400, "a valid initialize request is required");
         return;
       }
       const entry = await registry.create(singleHeader(req.headers["x-github-token"]));
-      await entry.transport.handleRequest(req, res, parsed);
+      try {
+        await entry.transport.handleRequest(req, res, parsed);
+      } catch (error) {
+        //* The SDK can reject initialize after connecting the transport, so an
+        //* untracked server must be closed before the error reaches the caller.
+        await entry.server.close();
+        throw error;
+      }
+      const sessionId = entry.transport.sessionId;
+      if (sessionId === undefined || registry.get(sessionId) === undefined) {
+        //* A 400 response may arrive without onsessioninitialized ever firing;
+        //* close the connected server so it cannot linger outside the registry.
+        await entry.server.close();
+      }
       return;
     }
 

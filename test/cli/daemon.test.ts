@@ -149,7 +149,7 @@ describe("daemon start", () => {
     );
   });
 
-  it("reports a live state as already running without spawning", async () => {
+  it("reports a live state as already running when health confirms the same PID", async () => {
     const h = await harness();
     const live = state(process.pid, "live-token");
     await writeFile(h.statePath, JSON.stringify(live), "utf8");
@@ -158,11 +158,46 @@ describe("daemon start", () => {
     await expect(runDaemonCommand(["start"], h.deps)).resolves.toBe(0);
 
     expect(h.spawn).not.toHaveBeenCalled();
-    expect(h.waitForHealth).not.toHaveBeenCalled();
+    expect(h.waitForHealth).toHaveBeenCalledWith({
+      port: PORT,
+      token: "live-token",
+      timeoutMs: 5000,
+    });
     expect(h.stdout.write).toHaveBeenCalledWith(
       JSON.stringify({ alreadyRunning: true, pid: process.pid, port: PORT }) + "\n",
     );
     await expect(readFile(h.tokenPath, "utf8")).resolves.toBe("Bearer live-token");
+  });
+
+  it("removes stale files and starts fresh when a live PID fails the health probe", async () => {
+    const h = await harness();
+    await writeFile(h.statePath, JSON.stringify(state(process.pid, "stale-live-token")), "utf8");
+    await writeFile(h.tokenPath, "Bearer stale-live-token", "utf8");
+    h.waitForHealth.mockRejectedValueOnce(new Error("connection refused"));
+
+    await expect(runDaemonCommand(["start"], h.deps)).resolves.toBe(0);
+
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(h.waitForHealth).toHaveBeenCalledTimes(2);
+    expect(h.stderr.write).toHaveBeenCalledWith(expect.stringContaining("connection refused"));
+    const fresh = await readDaemonState(h.statePath);
+    expect(fresh?.pid).toBe(DAEMON_PID);
+    expect(fresh?.token).not.toBe("stale-live-token");
+    await expect(readFile(h.tokenPath, "utf8")).resolves.toBe(`Bearer ${fresh?.token}`);
+  });
+
+  it("removes stale files and starts fresh when the health PID differs", async () => {
+    const h = await harness();
+    await writeFile(h.statePath, JSON.stringify(state(process.pid, "stale-live-token")), "utf8");
+    await writeFile(h.tokenPath, "Bearer stale-live-token", "utf8");
+    h.waitForHealth.mockResolvedValueOnce(healthy(9999));
+
+    await expect(runDaemonCommand(["start"], h.deps)).resolves.toBe(0);
+
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    expect(h.stderr.write).toHaveBeenCalledWith(expect.stringContaining("9999"));
+    const fresh = await readDaemonState(h.statePath);
+    expect(fresh?.token).not.toBe("stale-live-token");
   });
 
   it("kills the spawned child, removes both files, and fails when health never arrives", async () => {

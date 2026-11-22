@@ -219,6 +219,72 @@ describe("daemon http (loopback integration)", () => {
   });
 });
 
+describe("daemon http session hygiene (loopback integration)", () => {
+  let daemon: DaemonHandle;
+  let base: string;
+  let contextCount = 0;
+
+  beforeAll(async () => {
+    daemon = await startDaemonHttp({
+      env: {},
+      token: TOKEN,
+      port: 0,
+      version: "0.5.0",
+      //* Count constructions so a rejected initialize cannot silently build a
+      //* real server/transport pair and leave it untracked in the registry.
+      createContext: async (env: NodeJS.ProcessEnv): Promise<ToolContext> => {
+        contextCount += 1;
+        return {
+          client: makeClientWith([]),
+          config: makeConfig(),
+          authFingerprint: env["GITHUB_TOKEN"] ?? "no-token",
+          pins: createPinStore(),
+        };
+      },
+    });
+    base = `http://127.0.0.1:${daemon.port}`;
+  });
+
+  afterAll(async () => {
+    await daemon.close();
+  });
+
+  async function post(body: unknown): Promise<Response> {
+    return fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${TOKEN}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("rejects an initialize without a JSON-RPC envelope before building a context", async () => {
+    const before = contextCount;
+    const res = await post({
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "leak-probe", version: "1.0.0" },
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(daemon.sessionCount()).toBe(0);
+    expect(contextCount).toBe(before);
+  });
+
+  it("rejects a well-formed envelope with invalid initialize params before building a context", async () => {
+    const before = contextCount;
+    const res = await post({ jsonrpc: "2.0", id: 7, method: "initialize", params: {} });
+    expect(res.status).toBe(400);
+    expect(daemon.sessionCount()).toBe(0);
+    expect(contextCount).toBe(before);
+  });
+});
+
 describe("withTokenOverride", () => {
   it("sets both token env keys when a header is present", () => {
     const overridden = withTokenOverride({ GH_TOKEN: "old" }, "new");

@@ -203,11 +203,34 @@ function failureMessage(error: unknown): string {
 
 async function startDaemon(d: ResolvedDeps): Promise<number> {
   const existing = await readDaemonState(d.statePath);
-  if (existing !== null && isLive(existing.pid)) {
-    d.stdout.write(JSON.stringify({ alreadyRunning: true, pid: existing.pid, port: existing.port }) + "\n");
-    return 0;
+  if (existing !== null) {
+    if (isLive(existing.pid)) {
+      let confirmed = false;
+      let staleReason = "unknown health failure";
+      try {
+        const health = asHealth(
+          await d.waitForHealth({ port: existing.port, token: existing.token, timeoutMs: HEALTH_TIMEOUT_MS }),
+        );
+        if (health === null) {
+          staleReason = "malformed health payload";
+        } else if (health.pid !== existing.pid) {
+          staleReason = `health pid ${health.pid} does not match state pid ${existing.pid}`;
+        } else {
+          confirmed = true;
+        }
+      } catch (error) {
+        staleReason = `health check failed: ${failureMessage(error)}`;
+      }
+      if (confirmed) {
+        d.stdout.write(JSON.stringify({ alreadyRunning: true, pid: existing.pid, port: existing.port }) + "\n");
+        return 0;
+      }
+      //* A live PID that cannot answer health holds a port and a token file but
+      //* serves nothing; report why and drop the state before starting fresh.
+      d.stderr.write(`stale daemon state removed: ${staleReason}\n`);
+    }
+    await removeFiles(d.statePath, d.tokenPath);
   }
-  if (existing !== null) await removeFiles(d.statePath, d.tokenPath);
 
   let port: number;
   let token: string;

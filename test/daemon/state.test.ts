@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -80,6 +80,20 @@ describe("daemon state files", () => {
     await removeDaemonState(path);
     await expect(readDaemonState(path)).resolves.toBeNull();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "tightens a pre-existing 0644 state file to 0600",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "ghf-state-mode-"));
+      dirs.push(dir);
+      const path = join(dir, "daemon.json");
+      await writeFile(path, "{}", { mode: 0o644 });
+      await chmod(path, 0o644);
+      await writeDaemonState(path, sample);
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      await expect(readDaemonState(path)).resolves.toEqual(sample);
+    },
+  );
 });
 
 describe("daemon token files", () => {
