@@ -5,3 +5,4 @@ coverage/
 .env
 docs/superpowers/
 .superpowers/
+.kv_temp/
