@@ -132,6 +132,26 @@ describe("runCli", () => {
     expect(JSON.parse(out.text())).toMatchObject({ found: true, tag_name: "v1.2.3" });
   });
 
+  it("carries the usage line and the specific recovery hint on a CliUsageError envelope", async () => {
+    const out = capture();
+    const err = capture();
+    const code = await runCli(["repo", "--nope"], {
+      createRuntime: async () => ctx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(2);
+    const envelope = JSON.parse(err.text()) as { error: { code: string; message: string; hint?: string | undefined } };
+    expect(envelope.error).toEqual({
+      code: "invalid_params",
+      message: "unknown flag: --nope",
+      hint: expect.any(String),
+    });
+    expect(envelope.error.hint).toContain("github-fetcher repo <repo>");
+    expect(envelope.error.hint).toContain("valid flags: --fresh");
+    expect(out.text()).toBe("");
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();

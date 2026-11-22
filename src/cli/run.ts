@@ -70,8 +70,12 @@ export async function runCli(argv: string[], deps: RunCliDeps): Promise<number> 
   } catch (error) {
     if (error instanceof CliUsageError) {
       //? Usage mistakes are the CLI's invalid_params: same family and exit code as a
-      //? schema rejection, so scripts can treat both identically.
-      return reportError(deps, new GithubError("invalid_params", error.message));
+      //? schema rejection, so scripts can treat both identically. The usage line rides
+      //? every usage error and the throw site's convention pointer follows it, so the
+      //? envelope's details.hint tells a script how to recover without re-reading help.
+      return reportError(deps, new GithubError("invalid_params", error.message, {
+        hint: [usageFor(subcommand), error.hint].filter(Boolean).join("\n"),
+      }));
     }
     if (error instanceof GithubError) {
       return reportError(deps, error);

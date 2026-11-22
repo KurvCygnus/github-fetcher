@@ -2,6 +2,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { CliUsageError, parseArgs } from "../../src/cli/argv.js";
 import { SUBCOMMANDS } from "../../src/cli/subcommands.js";
+import type { SubcommandSpec } from "../../src/cli/subcommands.js";
 import { tools } from "../../src/tools/index.js";
 
 //? Zod 4 wraps .optional() fields in a ZodOptional schema and instanceof cannot see through
@@ -10,6 +11,18 @@ import { tools } from "../../src/tools/index.js";
 //? guard in capabilities.test.ts derives its "?" marker from.
 function bareType(field: z.ZodType): z.ZodType {
   return field instanceof z.ZodOptional ? bareType(field.unwrap() as z.ZodType) : field;
+}
+
+//? parseArgs throws before returning on usage mistakes; capture the typed error so hint
+//? assertions can inspect the recovery pointer attached to each throw site.
+function usageErrorFor(spec: SubcommandSpec, tokens: string[]): CliUsageError {
+  try {
+    parseArgs(spec, tokens);
+  } catch (error) {
+    if (error instanceof CliUsageError) return error;
+    throw error;
+  }
+  throw new Error("expected parseArgs to throw a CliUsageError");
 }
 
 describe("parseArgs", () => {
@@ -94,6 +107,25 @@ describe("parseArgs", () => {
       repo: "o/r",
       max_entries: 50,
     });
+  });
+
+  it("attaches a recovery hint to each class of usage error", () => {
+    expect(usageErrorFor(SUBCOMMANDS.repo, ["o/r", "--nope"]).hint).toBe("valid flags: --fresh");
+    expect(usageErrorFor(SUBCOMMANDS.repo, ["o/r", "extra"]).hint).toBe(
+      "booleans are bare — flags take no values; valid positionals: repo",
+    );
+    expect(usageErrorFor(SUBCOMMANDS.releases, ["o/r", "--per-page"]).hint).toBe(
+      "value flags take --flag <value>; booleans are bare",
+    );
+    expect(usageErrorFor(SUBCOMMANDS.repo, []).hint).toBe("required: repo");
+  });
+
+  it("degrades hints to (none) when a subcommand has no flags or positionals", () => {
+    expect(usageErrorFor(SUBCOMMANDS.user, ["someone", "--nope"]).hint).toBe("valid flags: (none)");
+    expect(usageErrorFor(SUBCOMMANDS.capabilities, ["--nope"]).hint).toBe("valid flags: --group");
+    expect(usageErrorFor(SUBCOMMANDS.doctor, ["extra"]).hint).toBe(
+      "booleans are bare — flags take no values; valid positionals: (none)",
+    );
   });
 
   it("covers every tool input with a positional or flag of a compatible kind", () => {

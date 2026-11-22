@@ -1,6 +1,24 @@
 import type { FlagKind, SubcommandSpec } from "./subcommands.js";
 
-export class CliUsageError extends Error {}
+export class CliUsageError extends Error {
+  hint?: string | undefined;
+}
+
+//? The constructor stays message-only; throw sites attach a recovery pointer so run.ts
+//? can surface both the usage line and the convention that fixes the specific mistake.
+function usageError(message: string, hint: string): CliUsageError {
+  const error = new CliUsageError(message);
+  error.hint = hint;
+  return error;
+}
+
+function validFlags(spec: SubcommandSpec): string {
+  return Object.keys(spec.flags).map((key) => `--${key}`).join(" ") || "(none)";
+}
+
+function validPositionals(spec: SubcommandSpec): string {
+  return spec.positional.map((slot) => slot.key).join(" ") || "(none)";
+}
 
 export interface ParsedArgs {
   input: Record<string, unknown>;
@@ -44,7 +62,10 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
     }
     if (!token.startsWith("--")) {
       const slot = spec.positional[positionalIndex];
-      if (!slot) throw new CliUsageError(`unexpected argument: ${token}`);
+      if (!slot) throw usageError(
+        `unexpected argument: ${token}`,
+        `booleans are bare — flags take no values; valid positionals: ${validPositionals(spec)}`,
+      );
       if (slot.kind === "string-array") {
         //? A variadic slot keeps its index so every following bare token lands in the same
         //? array; flags in between are consumed by the flag branch without disturbing it.
@@ -58,14 +79,14 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
     }
     const flag = token.slice(2);
     const kind = spec.flags[flag];
-    if (kind === undefined) throw new CliUsageError(`unknown flag: ${token}`);
+    if (kind === undefined) throw usageError(`unknown flag: ${token}`, `valid flags: ${validFlags(spec)}`);
     if (kind === "boolean") {
       input[toInputKey(flag)] = true;
       continue;
     }
     const value = tokens[index + 1];
     if (value === undefined || value.startsWith("--")) {
-      throw new CliUsageError(`flag --${flag} requires a value`);
+      throw usageError(`flag --${flag} requires a value`, "value flags take --flag <value>; booleans are bare");
     }
     input[toInputKey(flag)] = convertValue(kind, value);
     index += 1;
@@ -84,7 +105,7 @@ export function parseArgs(spec: SubcommandSpec, tokens: readonly string[]): Pars
       .slice(positionalIndex)
       .find((slot) => slot.required !== false && input[slot.key] === undefined);
     if (missing !== undefined) {
-      throw new CliUsageError(`missing required argument: ${missing.key}`);
+      throw usageError(`missing required argument: ${missing.key}`, `required: ${missing.key}`);
     }
   }
   return { input, pretty, help };

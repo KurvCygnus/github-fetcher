@@ -27,6 +27,19 @@ describe("cli entry", () => {
     expect(stdout.write).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
   });
 
+  it("documents arg shapes and the arg-shape legend in top-level help", async () => {
+    const stdout = stream();
+    await expect(runEntry(["--help"], { stdout, stderr: stream() })).resolves.toBe(0);
+    const help = stdout.write.mock.calls[0]?.[0] as string;
+    expect(help).toContain("<angle brackets> = required positional");
+    expect(help).toContain("[square brackets] = optional positional");
+    expect(help).toContain("--flag value = value flag");
+    expect(help).toContain("bare --flag = boolean");
+    expect(help).toContain("github_capabilities lists every subcommand with its input signature.");
+    expect(help).toContain("github_repo  <repo> --fresh");
+    expect(help).toContain("github_rate_limit  --resource|--all");
+  });
+
   it("rejects an unknown subcommand with exit code 2", async () => {
     const stderr = stream();
     await expect(runEntry(["nope"], { stdout: stream(), stderr })).resolves.toBe(2);

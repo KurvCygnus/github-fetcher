@@ -67,22 +67,37 @@ export function subcommandSpec(name: string | undefined): SubcommandSpec | undef
   return name === undefined ? undefined : SPECS_BY_NAME[name];
 }
 
+//? One notation builder feeds both the detailed per-subcommand usage and the top-level
+//? cheat-sheet rows, so a slot's shape cannot drift between the two help surfaces.
+function positionalTokens(spec: SubcommandSpec): string[] {
+  return spec.positional.map((slot) => {
+    const label = slot.kind === "string-array" ? `${slot.key}...` : slot.key;
+    return slot.required === false ? `[${label}]` : `<${label}>`;
+  });
+}
+
+function flagTokens(spec: SubcommandSpec): string[] {
+  return Object.keys(spec.flags).map((key) => `--${key}`);
+}
+
+function argShape(spec: SubcommandSpec): string {
+  return [...positionalTokens(spec), flagTokens(spec).join("|")].filter(Boolean).join(" ");
+}
+
 export function usageFor(subcommand: string | undefined): string {
   const spec = subcommandSpec(subcommand);
   if (spec && subcommand !== undefined) {
-    const positionals = spec.positional
-      .map((slot) => {
-        const label = slot.kind === "string-array" ? `${slot.key}...` : slot.key;
-        return slot.required === false ? `[${label}]` : `<${label}>`;
-      })
-      .join(" ");
-    const flags = Object.keys(spec.flags).map((key) => `--${key}`).join(" ");
+    const positionals = positionalTokens(spec).join(" ");
+    const flags = flagTokens(spec).join(" ");
     return `github-fetcher ${subcommand} ${positionals}\n  tool: ${spec.tool}\n  flags: ${flags || "(none)"}\n`;
   }
   //? init/remove are config management, not tools: they never appear in tools/list, so their
   //? rows are spelled out here instead of coming from the SUBCOMMANDS table.
   const lines = [
-    ...Object.entries(SUBCOMMANDS).map(([name, entry]) => `  ${name.padEnd(15)} ${entry.tool}`),
+    ...Object.entries(SUBCOMMANDS).map(([name, entry]) => {
+      const shape = argShape(entry);
+      return `  ${name.padEnd(15)} ${entry.tool}${shape === "" ? "" : `  ${shape}`}`;
+    }),
     `  ${"init".padEnd(15)} configure MCP clients interactively (TUI; --client/--all/--dry-run)`,
     `  ${"remove".padEnd(15)} remove the github entry from configured clients.`,
   ];
@@ -95,6 +110,9 @@ export function usageFor(subcommand: string | undefined): string {
     "Subcommands:",
     ...lines,
     "",
+    "Arg shapes: <angle brackets> = required positional; [square brackets] = optional positional.",
+    "--flag value = value flag; bare --flag = boolean (no value).",
+    "github_capabilities lists every subcommand with its input signature.",
     "Flags are kebab-case schema keys; flag arrays are comma-separated; booleans are bare.",
     "Positional list arguments take one value per argument.",
     "Output is compact JSON on stdout; errors go to stderr as JSON with family exit codes.",
