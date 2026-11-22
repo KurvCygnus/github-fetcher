@@ -129,7 +129,7 @@ export const searchCodeTool = defineTool({
   name: "github_search_code",
   title: "GitHub code search",
   description:
-    "Search code across GitHub. Requires a token; GitHub allows this endpoint only 10 requests/minute and caps results at 1000. Returns {total_count, incomplete_results, items[{repo, path, sha, html_url, text_matches}], page, per_page, has_more, next_page}.",
+    "Search code across GitHub. Requires a token; GitHub allows this endpoint only 10 requests/minute and caps results at 1000. Returns {total_count, incomplete_results, items[{repo, path, sha, html_url, text_matches}], page, per_page, has_more, next_page}. GitHub's search index lags fresh pushes; recently changed symbols may be missing — cross-check with github_file_grep or github_file.",
   inputSchema: {
     query: z.string().describe("GitHub code search query"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),

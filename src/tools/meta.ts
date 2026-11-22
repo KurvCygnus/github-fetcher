@@ -5,6 +5,9 @@ import type { CacheOutcome, QuotaSnapshot } from "../core/github.js";
 //? "undefined" (house pattern) because handlers pass schema-optional values.
 //? calls is the handler's client invocation count (raw CDN fallbacks excluded),
 //? the v0.4 cost-certainty report; helpers omit the key when no count is passed.
+//* calls counts client invocations — including cache hits and internal ref resolution —
+//* so it tracks activity rather than quota consumption; GitHub's per-window used counter
+//* is the quota ground truth.
 export interface ResponseMeta {
   cache: "hit" | "revalidated" | "miss";
   age_s?: number | undefined;
