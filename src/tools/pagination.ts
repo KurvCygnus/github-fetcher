@@ -19,6 +19,20 @@ export function linkFor(headers: Headers, rel: string): string | null {
   return match?.[1] ?? null;
 }
 
+//* The `last` rel carries the final page number directly, so resolving the
+//* history tail costs no walk; a missing page param or a malformed URL maps to
+//* null, which callers treat as a single-page history.
+export function parseLastPage(headers: Headers): number | null {
+  const url = linkFor(headers, "last");
+  if (url === null) return null;
+  try {
+    const page = Number(new URL(url).searchParams.get("page"));
+    return Number.isInteger(page) && page > 0 ? page : null;
+  } catch {
+    return null;
+  }
+}
+
 export function listEnvelope<T>(items: T[], page: number, perPage: number, link: string | null) {
   const nextPage = parseNextPage(link);
   return {

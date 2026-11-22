@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { defineTool } from "./define.js";
-import { responseMeta } from "./meta.js";
+import { responseMeta, scarcestMeta } from "./meta.js";
 import { getPinnedRef } from "./pin.js";
-import { listEnvelope } from "./pagination.js";
+import { listEnvelope, parseLastPage } from "./pagination.js";
 import { githubQuery, parseRepo, truncateText } from "./util.js";
 
 interface CommitResponse {
@@ -28,6 +28,7 @@ export const commitsTool = defineTool({
     since: z.string().optional().describe("ISO 8601 lower bound"),
     until: z.string().optional().describe("ISO 8601 upper bound"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
+    first: z.boolean().optional().describe("Serve the oldest page of the history instead of the newest; combine with path to hunt creation commits"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 20"),
     max_message_chars: z
       .number()
@@ -45,7 +46,6 @@ export const commitsTool = defineTool({
   },
   async handler(input, ctx) {
     const { owner, name } = parseRepo(input.repo);
-    const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     //? Session pin honoring: the ref-taking read tools anchor ref-less reads to
     //* the session pin; github_commits has no ref resolution of its own (the
@@ -54,36 +54,70 @@ export const commitsTool = defineTool({
     //* and fresh never unpins; the pin itself adds no upstream call.
     const pinned = getPinnedRef(`${owner}/${name}`);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
-    const query = githubQuery({
-      sha: input.ref ?? usedPinned ?? undefined,
-      path: input.path,
-      author: input.author,
-      since: input.since,
-      until: input.until,
-      page,
-      per_page: perPage,
-    });
-    const result = await ctx.client.api<CommitResponse[]>(
-      `/repos/${owner}/${name}/commits${query}`,
-      { fresh: input.fresh, cacheTtlMs: 120_000 },
-    );
+    const sha = input.ref ?? usedPinned ?? undefined;
+    const requestPath = `/repos/${owner}/${name}/commits`;
+    //* Both the tail discovery and the default path carry every filter, so one
+    //* query builder serves both and only the page number varies.
+    const queryFor = (page: number) =>
+      githubQuery({
+        sha,
+        path: input.path,
+        author: input.author,
+        since: input.since,
+        until: input.until,
+        page,
+        per_page: perPage,
+      });
+    const options = { fresh: input.fresh, cacheTtlMs: 120_000 };
+    const mapItems = (data: CommitResponse[]) =>
+      data.map((commit) => ({
+        sha: commit.sha,
+        short_sha: commit.sha.slice(0, 7),
+        message:
+          input.max_message_chars === undefined
+            ? commit.commit.message
+            : truncateText(commit.commit.message, input.max_message_chars).text,
+        author: {
+          name: commit.commit.author.name,
+          email: commit.commit.author.email,
+          login: commit.author?.login ?? null,
+        },
+        date: commit.commit.author.date,
+        url: commit.html_url,
+      }));
+
+    if (input.first === true) {
+      //* The discovery call reads the Link `last` rel; the second call, when
+      //* needed, fetches that final page directly, so a huge history with a
+      //* narrow path filter still costs two calls and never walks.
+      const firstResult = await ctx.client.api<CommitResponse[]>(`${requestPath}${queryFor(1)}`, options);
+      const lastPage = parseLastPage(firstResult.headers);
+      const result =
+        lastPage === null
+          ? firstResult
+          : await ctx.client.api<CommitResponse[]>(`${requestPath}${queryFor(lastPage)}`, options);
+      const pages = lastPage ?? 1;
+      const calls = lastPage === null ? 1 : 2;
+      const meta = scarcestMeta(lastPage === null ? [firstResult] : [firstResult, result], calls);
+      //* The tail IS the end of the oldest-first window, so paging metadata is
+      //* pinned rather than derived from the tail response's own Link header.
+      return {
+        items: mapItems(result.data),
+        page: pages,
+        per_page: perPage,
+        has_more: false,
+        next_page: null,
+        pages_in_history: pages,
+        ...(usedPinned !== undefined ? { pinned_sha: usedPinned } : {}),
+        ...(meta !== undefined ? { meta } : {}),
+      };
+    }
+
+    const page = input.page ?? 1;
+    const result = await ctx.client.api<CommitResponse[]>(`${requestPath}${queryFor(page)}`, options);
     const { data, headers } = result;
     const meta = responseMeta(result, 1);
-    const items = data.map((commit) => ({
-      sha: commit.sha,
-      short_sha: commit.sha.slice(0, 7),
-      message:
-        input.max_message_chars === undefined
-          ? commit.commit.message
-          : truncateText(commit.commit.message, input.max_message_chars).text,
-      author: {
-        name: commit.commit.author.name,
-        email: commit.commit.author.email,
-        login: commit.author?.login ?? null,
-      },
-      date: commit.commit.author.date,
-      url: commit.html_url,
-    }));
+    const items = mapItems(data);
     //? pinned_sha appears only when the listing was anchored by the session pin;
     //* meta is spread after it so it stays the trailing key and stays absent
     //* entirely when the client reported no cache outcome.

@@ -188,6 +188,48 @@ describe("runCli", () => {
     });
   });
 
+  it("passes --first through the commits subcommand as the oldest-window flag", async () => {
+    //? A bare boolean flag must reach the handler: the Link `last` rel drives a
+    //? second call for the tail and the envelope reports the resolved depth.
+    const out = capture();
+    const err = capture();
+    const api = vi.fn(async (url: string) => ({
+      data: [
+        {
+          sha: url.includes("page=2") ? "oldestsha" : "newestsha",
+          html_url: "https://github.com/o/r/commit/x",
+          commit: {
+            message: "m",
+            author: { name: "A", email: "a@example.com", date: "2024-01-01T00:00:00Z" },
+          },
+          author: null,
+        },
+      ],
+      headers: new Headers({
+        link: '<https://api.github.com/repos/o/r/commits?page=2>; rel="last"',
+      }),
+      status: 200,
+      contentType: "application/json",
+    }));
+    const commitsCtx: ToolContext = {
+      ...ctx,
+      client: { api, apiRaw: vi.fn(), raw: vi.fn() } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["commits", "o/r", "--first"], {
+      createRuntime: async () => commitsCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(out.text())).toMatchObject({
+      page: 2,
+      has_more: false,
+      next_page: null,
+      pages_in_history: 2,
+    });
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();
