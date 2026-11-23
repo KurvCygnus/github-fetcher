@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { GithubError } from "../../src/core/errors.js";
 import type { GitHubApi } from "../../src/core/github.js";
 import { userEventsTool, userReposTool, userStarredTool, userTool } from "../../src/tools/user.js";
 import { makeConfig } from "../helpers.js";
@@ -190,7 +191,7 @@ describe("github_user_repos", () => {
       { user: "octocat" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledWith("/users/octocat/repos?page=1&per_page=20", {
+    expect(client.api).toHaveBeenCalledWith("/users/octocat/repos?page=1&per_page=100", {
       fresh: undefined,
       cacheTtlMs: 120_000,
     });
@@ -206,6 +207,7 @@ describe("github_user_repos", () => {
           watchers: 1,
           language: "TypeScript",
           pushed_at: "2026-01-02T03:04:05Z",
+          created_at: null,
           description: "First repo",
           html_url: "https://github.com/octocat/hello-world",
         },
@@ -219,6 +221,7 @@ describe("github_user_repos", () => {
           watchers: 0,
           language: null,
           pushed_at: "2026-02-03T04:05:06Z",
+          created_at: null,
           description: null,
           html_url: "https://github.com/octocat/private-repo",
         },
@@ -255,14 +258,17 @@ describe("github_user_repos", () => {
     expect(items[0]?.visibility).toBe("internal");
   });
 
-  it("forwards type, sort, order, and pagination to the endpoint", async () => {
+  it("forwards type, sort, and order upstream while paginating client-side", async () => {
     const client = clientWith([]);
     await userReposTool.handler(
       { user: "octocat", type: "owner", sort: "pushed", order: "desc", page: 2, per_page: 5, fresh: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
+    //? The gather always reads at 100 per page from page 1; the caller's
+    //* page/per_page now slice the filtered window locally, so they are absent
+    //* from the upstream URL while type/sort/order still pass through.
     expect(client.api).toHaveBeenCalledWith(
-      "/users/octocat/repos?type=owner&sort=pushed&order=desc&page=2&per_page=5",
+      "/users/octocat/repos?type=owner&sort=pushed&order=desc&page=1&per_page=100",
       { fresh: true, cacheTtlMs: 120_000 },
     );
   });
@@ -275,9 +281,9 @@ describe("github_user_repos filters", () => {
       { user: "octocat" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    //? The fork filter is client-side, so the upstream request stays the plain
-    //* paginated read no matter how the filters are set.
-    expect(client.api).toHaveBeenCalledWith("/users/octocat/repos?page=1&per_page=20", {
+    //? Filters apply to the whole gathered window, so the upstream read always
+    //* walks at 100 per page regardless of how the fork filter is set.
+    expect(client.api).toHaveBeenCalledWith("/users/octocat/repos?page=1&per_page=100", {
       fresh: undefined,
       cacheTtlMs: 120_000,
     });
@@ -290,23 +296,32 @@ describe("github_user_repos filters", () => {
     expect(namesOf(kept.items)).toEqual(["hello-world", "forked-lab"]);
   });
 
-  it("applies min_stars per page and keeps the envelope Link-derived", async () => {
+  it("applies min_stars to the gathered window before paging", async () => {
     const client = clientWithRoutes({
-      "/users/octocat/repos": () => ({
-        data: [repoFixture("five", 5), repoFixture("zero", 0), repoFixture("two", 2)],
-        link: nextLink("octocat", 2),
-      }),
+      "/users/octocat/repos": (page) => {
+        if (page === 1) {
+          return {
+            data: [repoFixture("five", 5), repoFixture("zero", 0), repoFixture("two", 2)],
+            link: nextLink("octocat", 2),
+          };
+        }
+        return { data: [repoFixture("also-zero", 0), repoFixture("three", 3)] };
+      },
     });
     const output = await userReposTool.handler(
-      { user: "octocat", min_stars: 1 },
+      { user: "octocat", min_stars: 1, per_page: 1 },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(namesOf(output.items)).toEqual(["five", "two"]);
-    //? Passthrough mode: filtering can leave the page short but the Link header
-    //* still decides has_more/next_page (the search public_only precedent).
-    expect(output.has_more).toBe(true);
-    expect(output.next_page).toBe(2);
-    expect(requestedUrls(client, "/users/octocat/repos")).toEqual(["/users/octocat/repos?page=1&per_page=20"]);
+    //? Filtering the whole gathered window first leaves [five, two, three], so
+    //* page 1 is a full one-item page and has_more/next_page describe that
+    //* filtered window rather than the raw upstream pages.
+    expect(namesOf(output.items)).toEqual(["five"]);
+    expect(output).toMatchObject({ page: 1, per_page: 1, has_more: true, next_page: 2 });
+    expect("gather_truncated" in output).toBe(false);
+    expect(requestedUrls(client, "/users/octocat/repos")).toEqual([
+      "/users/octocat/repos?page=1&per_page=100",
+      "/users/octocat/repos?page=2&per_page=100",
+    ]);
   });
 
   it("ranks a two-page gather by stars and reports the scarcest meta", async () => {
@@ -413,6 +428,25 @@ describe("github_user_repos filters", () => {
     expect(output.items).toEqual([]);
     expect(output).toMatchObject({ page: 1, per_page: 20, has_more: false, next_page: null });
   });
+
+  it("filters forks before paging so a requested page is full", async () => {
+    //? Forks are interleaved with originals; filtering per page would leave a
+    //* short page, so the whole gathered window must be filtered before slicing.
+    const client = clientWith([
+      repoFixture("a", 4, false),
+      repoFixture("b", 3, true),
+      repoFixture("c", 2, false),
+      repoFixture("d", 1, true),
+    ]);
+    const result = await userReposTool.handler(
+      { user: "octocat", per_page: 2, page: 1 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const items = result.items as Array<{ fork: boolean; created_at: string | null }>;
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => !item.fork)).toBe(true);
+    expect(items[0]).toHaveProperty("created_at");
+  });
 });
 
 describe("github_user_starred", () => {
@@ -504,6 +538,27 @@ describe("github_user_events", () => {
       has_more: false,
       next_page: null,
       meta: { cache: "miss", calls: 1 },
+    });
+  });
+
+  it("user events 422 becomes a structured hinted error", async () => {
+    //? Only a 422 is rewritten; the raw GitHub validation JSON must never leak.
+    const client = {
+      api: vi.fn(async () => {
+        throw new GithubError("invalid_params", "Validation Failed", { status: 422 });
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    await expect(
+      userEventsTool.handler(
+        { user: "octocat", page: 10, per_page: 100 },
+        { client, config: makeConfig(), authFingerprint: "abc" },
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid_params",
+      message: expect.stringContaining("90 days or 300 events"),
+      hint: expect.any(String),
     });
   });
 });

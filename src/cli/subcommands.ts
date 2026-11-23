@@ -22,7 +22,7 @@ export const SUBCOMMANDS = {
   tree: { tool: "github_tree", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", "path-prefix": "string", glob: "string", recursive: "boolean", "max-entries": "number", "max-bytes": "number", "summary-only": "boolean", ...REPO_FRESH } },
   file: { tool: "github_file", positional: [{ key: "repo", kind: "string" }, { key: "path", kind: "string" }], flags: { ref: "string", "start-line": "number", "end-line": "number", "max-bytes": "number", ...REPO_FRESH } },
   "file-grep": { tool: "github_file_grep", positional: [{ key: "repo", kind: "string" }, { key: "path", kind: "string" }, { key: "pattern", kind: "string" }], flags: { "context-lines": "number", "max-matches": "number", ref: "string", ...REPO_FRESH } },
-  files: { tool: "github_files", positional: [{ key: "repo", kind: "string" }, { key: "paths", kind: "string-array" }], flags: { ref: "string", ...REPO_FRESH } },
+  files: { tool: "github_files", positional: [{ key: "repo", kind: "string" }, { key: "paths", kind: "string-array" }], flags: { ref: "string", "max-bytes": "number", ...REPO_FRESH } },
   readme: { tool: "github_readme", positional: [{ key: "repo", kind: "string" }], flags: { ...REPO_FRESH } },
   commits: { tool: "github_commits", positional: [{ key: "repo", kind: "string" }], flags: { ref: "string", path: "string", author: "string", since: "string", until: "string", page: "number", first: "boolean", "per-page": "number", "max-message-chars": "number", ...REPO_FRESH } },
   commit: { tool: "github_commit", positional: [{ key: "repo", kind: "string" }, { key: "ref", kind: "string", required: false }], flags: { ...REPO_FRESH } },

@@ -62,12 +62,14 @@ describe("github_compare_refs", () => {
       ahead_by: 2,
       behind_by: 0,
       total_commits: 5,
+      total_files: 2,
       files: [
-        { filename: "src/a.ts", status: "modified", additions: 10, deletions: 2, patch: "@@ -1,2 +1,3 @@" },
-        { filename: "src/b.ts", status: "added", additions: 5, deletions: 0, patch: null },
+        { filename: "src/a.ts", status: "modified", additions: 10, deletions: 2, patch: "@@ -1,2 +1,3 @@", patch_truncated: false },
+        { filename: "src/b.ts", status: "added", additions: 5, deletions: 0, patch: null, patch_truncated: false },
       ],
       meta: { cache: "miss", calls: 1 },
     });
+    expect(Object.keys(output).at(-1)).toBe("meta");
   });
 
   it("URI-encodes each ref component in the path", async () => {
@@ -97,8 +99,9 @@ describe("github_compare_refs", () => {
     );
     const list = output.files as Array<unknown>;
     expect(list).toHaveLength(100);
-    expect(list[99]).toEqual({ filename: "f99.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ f99 @@" });
+    expect(list[99]).toEqual({ filename: "f99.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ f99 @@", patch_truncated: false });
     expect(output.files_truncated).toBe(true);
+    expect(output.total_files).toBe(105);
 
     const exactClient = clientFor({ ...basePayload, files: files.slice(0, 100) });
     const exact = await compareRefsTool.handler(
@@ -106,6 +109,7 @@ describe("github_compare_refs", () => {
       ctxFor(exactClient),
     );
     expect((exact.files as Array<unknown>)).toHaveLength(100);
+    expect(exact.total_files).toBe(100);
     expect("files_truncated" in exact).toBe(false);
   });
 
@@ -119,9 +123,34 @@ describe("github_compare_refs", () => {
       { repo: "o/r", base: "main", head: "feature" },
       ctxFor(client),
     );
-    const files = output.files as Array<{ patch: string | null }>;
+    const files = output.files as Array<{ patch: string | null; patch_truncated: boolean }>;
     expect(files[0]?.patch).toHaveLength(4000);
     expect(files[0]?.patch).not.toBe(longPatch);
+    expect(files[0]?.patch_truncated).toBe(true);
+  });
+
+  it("marks patch_truncated only when the 4000-character cap actually cut the patch", async () => {
+    //? A patch of exactly 4000 characters fits, so only the over-cap row is
+    //* flagged; a null patch is never truncated.
+    const client = clientFor({
+      ...basePayload,
+      files: [
+        { filename: "exact.ts", status: "modified", additions: 4000, deletions: 0, patch: "a".repeat(4000) },
+        { filename: "over.ts", status: "modified", additions: 4001, deletions: 0, patch: "a".repeat(4001) },
+        { filename: "none.ts", status: "added", additions: 0, deletions: 0 },
+      ],
+    });
+    const output = await compareRefsTool.handler(
+      { repo: "o/r", base: "main", head: "feature" },
+      ctxFor(client),
+    );
+    const files = output.files as Array<{ filename: string; patch: string | null; patch_truncated: boolean }>;
+    expect(files.map((file) => [file.filename, file.patch_truncated])).toEqual([
+      ["exact.ts", false],
+      ["over.ts", true],
+      ["none.ts", false],
+    ]);
+    expect(output.total_files).toBe(3);
   });
 
   it("propagates the 404 for unknown refs as a standard error", async () => {

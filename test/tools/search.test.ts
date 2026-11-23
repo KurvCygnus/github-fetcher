@@ -299,6 +299,7 @@ describe("github_search_issues", () => {
           state: "open",
           type: "issue",
           author: "alice",
+          created_at: "2024-01-01T00:00:00Z",
         },
       ],
       page: 1,

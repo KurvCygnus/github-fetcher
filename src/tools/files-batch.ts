@@ -57,6 +57,7 @@ async function fetchOne(
   ref: string,
   pathSpec: string,
   fresh: boolean | undefined,
+  maxBytes: number,
 ): Promise<FetchOneOutcome> {
   let attempts = 0;
   try {
@@ -107,7 +108,7 @@ async function fetchOne(
     //* empty line, matching github_file. Count before the byte budget clips the
     //* text so the number describes the whole file, not the returned excerpt.
     const totalLines = text.split("\n").length;
-    const clipped = truncateText(text, ctx.config.maxFileBytes);
+    const clipped = truncateText(text, maxBytes);
     return {
       item: {
         path: data.path,
@@ -144,11 +145,12 @@ export const filesBatchTool = defineTool({
   name: "github_files",
   title: "GitHub file batch",
   description:
-    "Batch file read: fetches up to 10 paths per call from one repository concurrently, one core call per uncached path, zero for cache hits, and reports per-item success and failure so one missing or malformed path never rejects the call. Returns {results[{path, ok, data{path, sha, size, encoding, content, binary, truncated, total_lines}} or {path, ok, error{code, message}}], elapsed_ms, meta}.",
+    "Batch file read: fetches up to 10 paths per call from one repository concurrently, one core call per uncached path, zero for cache hits, and reports per-item success and failure so one missing or malformed path never rejects the call. Optional max_bytes (default: server maxFileBytes) clips each decoded text row and drives its truncated flag; binary rows stay untouched and total_lines counts the whole file before clipping. Returns {results[{path, ok, data{path, sha, size, encoding, content, binary, truncated, total_lines}} or {path, ok, error{code, message}}], elapsed_ms, meta}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     paths: z.array(z.string()).min(1).max(10).describe("File paths inside the repository; up to 10 per call"),
     ref: z.string().optional().describe("Branch, tag, or commit; defaults to the repository default branch"),
+    max_bytes: z.number().int().min(1).optional().describe("Per-call byte budget for decoded text; defaults to the server maxFileBytes and leaves binary rows untouched"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {
@@ -166,8 +168,9 @@ export const filesBatchTool = defineTool({
     const pinned = getPinnedRef(`${owner}/${name}`, ctx);
     const usedPinned = input.ref === undefined ? pinned?.sha : undefined;
     const ref = await resolveRef(ctx.client, owner, name, input.ref ?? usedPinned ?? undefined, input.fresh);
+    const maxBytes = input.max_bytes ?? ctx.config.maxFileBytes;
     const settled = await Promise.allSettled(
-      input.paths.map((pathSpec) => fetchOne(ctx, owner, name, ref, pathSpec, input.fresh)),
+      input.paths.map((pathSpec) => fetchOne(ctx, owner, name, ref, pathSpec, input.fresh, maxBytes)),
     );
     const results: FileBatchItem[] = [];
     //? Failed entries carry no client result, so only the fulfilled entries'

@@ -27,7 +27,7 @@ export const compareRefsTool = defineTool({
   name: "github_compare_refs",
   title: "GitHub ref comparison",
   description:
-    "Compares two refs in one repository, one core call: ahead/behind counts, total commits, and the first 100 changed files with each patch capped at 4000 characters. Unknown refs surface the standard 404 error. Returns {status, ahead_by, behind_by, total_commits, files[{filename, status, additions, deletions, patch}], files_truncated?}.",
+    "Compares two refs in one repository, one core call: ahead/behind counts, total commits, and the first 100 changed files with each patch capped at 4000 characters; total_files reports the full diff size and each file's patch_truncated marks a real cut. Unknown refs surface the standard 404 error. Returns {status, ahead_by, behind_by, total_commits, total_files, files[{filename, status, additions, deletions, patch, patch_truncated}], files_truncated?}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     base: z.string().describe("Base ref (branch, tag or sha)"),
@@ -49,18 +49,26 @@ export const compareRefsTool = defineTool({
     const { data } = compareResponse;
     const meta = responseMeta(compareResponse, 1);
     const allFiles = data.files ?? [];
-    const files = allFiles.slice(0, MAX_FILES).map((file) => ({
-      filename: file.filename,
-      status: file.status,
-      additions: file.additions,
-      deletions: file.deletions,
-      patch: file.patch === undefined ? null : truncateText(file.patch, MAX_PATCH_CHARS).text,
-    }));
+    const files = allFiles.slice(0, MAX_FILES).map((file) => {
+      //? A null patch means upstream omitted it, so it is never a truncation;
+      //* the flag reflects the 4000-character cap actually shortening the text.
+      const clipped = file.patch === undefined ? undefined : truncateText(file.patch, MAX_PATCH_CHARS);
+      return {
+        filename: file.filename,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        patch: clipped?.text ?? null,
+        patch_truncated: clipped?.truncated ?? false,
+      };
+    });
     const result: Record<string, unknown> = {
       status: data.status,
       ahead_by: data.ahead_by,
       behind_by: data.behind_by,
       total_commits: data.total_commits,
+      //? The full diff size is reported even when the file list is capped.
+      total_files: allFiles.length,
       files,
     };
     //? The flag appears only when the cap actually cut something; its absence

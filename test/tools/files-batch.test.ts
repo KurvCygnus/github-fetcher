@@ -373,6 +373,40 @@ describe("github_files", () => {
     });
   });
 
+  it("applies a per-call max_bytes to text only and leaves binary untouched", async () => {
+    //? The per-call budget overrides the larger config default; binary rows have
+    //* no decoded text to clip, so their content and flags stay unchanged.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
+    const client = clientForRoutes({
+      "long.txt": contents("long.txt", "aaaa\nbbbb\n"),
+      "logo.png": {
+        type: "file",
+        encoding: "base64",
+        size: png.length,
+        name: "logo.png",
+        path: "logo.png",
+        sha: "sha2",
+        content: png.toString("base64"),
+        download_url: null,
+      },
+    });
+    const output = await filesBatchTool.handler(
+      { repo: REPO, paths: ["long.txt", "logo.png"], ref: "main", max_bytes: 4 },
+      ctxFor(client),
+    );
+    const items = output.results as Array<Record<string, unknown>>;
+    expect(items[0]).toEqual({
+      path: "long.txt",
+      ok: true,
+      data: { path: "long.txt", sha: "sha1", size: 10, encoding: "utf-8", content: "aaaa", binary: false, truncated: true, total_lines: 3 },
+    });
+    expect(items[1]).toEqual({
+      path: "logo.png",
+      ok: true,
+      data: { path: "logo.png", sha: "sha2", size: 7, encoding: null, content: null, binary: true, truncated: false, total_lines: null },
+    });
+  });
+
   it("anchors every path to the pinned sha and reports pinned_sha", async () => {
     //? Review focus: each contents request URL must carry the pinned SHA, not
     //* the branch the pin was created from; the sha also short-circuits the

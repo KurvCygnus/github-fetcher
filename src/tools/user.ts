@@ -33,6 +33,7 @@ interface RepoResponse {
   watchers_count: number;
   language: string | null;
   pushed_at: string | null;
+  created_at?: string | null;
   description: string | null;
   html_url: string;
 }
@@ -130,6 +131,7 @@ function projectRepo(repo: RepoResponse) {
     watchers: repo.watchers_count,
     language: repo.language,
     pushed_at: repo.pushed_at,
+    created_at: repo.created_at ?? null,
     description: repo.description,
     html_url: repo.html_url,
   };
@@ -165,6 +167,8 @@ export async function gatherRepos(
   user: string,
   type: string | undefined,
   fresh: boolean | undefined,
+  sort?: string,
+  order?: string,
 ): Promise<GatherResult> {
   const payloads: RepoResponse[] = [];
   const results: MetaSource[] = [];
@@ -172,7 +176,7 @@ export async function gatherRepos(
   //* envelope decides whether another page exists.
   let nextPage: number | null = 1;
   for (let page = 1; nextPage !== null && page <= MAX_GATHER_PAGES; page += 1) {
-    const query = githubQuery({ type, page, per_page: GATHER_PER_PAGE });
+    const query = githubQuery({ type, sort, order, page, per_page: GATHER_PER_PAGE });
     const result = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
       fresh,
       cacheTtlMs: 120_000,
@@ -188,7 +192,7 @@ export const userReposTool = defineTool({
   name: "github_user_repos",
   title: "GitHub user repositories",
   description:
-    "List a user's public repositories with the house projection: visibility, fork status, stars, watchers, language, push time, and description; type defaults to owner. Forks are dropped by default (include_forks: true keeps them) and min_stars keeps repositories at or above the star floor; both filters are client-side, so a filtered page can come back short. sort: stars gathers up to 10 pages of 100 client-side, ranks by stars descending, and reports has_more/next_page from the filtered window with gather_truncated when the cap stopped the gather. Costs 1 core call, up to 10 with sort: stars. Returns {items[{name, full_name, private, visibility, fork, stars, watchers, language, pushed_at, description, html_url}], page, per_page, has_more, next_page, gather_truncated}.",
+    "List a user's public repositories with the house projection: visibility, fork status, stars, watchers, language, push time, creation time, and description; type defaults to owner. Forks are dropped by default (include_forks: true keeps them) and min_stars keeps repositories at or above the star floor. Every mode gathers up to 10 pages of 100 and applies both filters to the whole window before slicing, so a requested page is full; sort: created|updated|pushed|full_name keeps GitHub's upstream ordering while sort: stars ranks client-side and ignores order. has_more/next_page describe the filtered window and gather_truncated appears only when the 10-page cap stopped the gather. Costs up to 10 core calls. Returns {items[{name, full_name, private, visibility, fork, stars, watchers, language, pushed_at, created_at, description, html_url}], page, per_page, has_more, next_page, gather_truncated}.",
   inputSchema: {
     user: z.string().regex(LOGIN_PATTERN).describe("GitHub user login, like octocat (alphanumerics and hyphens)"),
     type: z.enum(["all", "owner", "public", "private", "member"]).optional().describe("Filter by relationship to the user: all, owner, public, private, or member"),
@@ -210,53 +214,36 @@ export const userReposTool = defineTool({
     const user = parseUser(input.user);
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
-
-    //? In-gather mode: rank the filtered window in memory and slice the
-    //* requested page out of it; has_more/next_page describe that window, so a
-    //* cap-truncated gather still pages honestly through what was gathered.
+    //? Stars ranks client-side and ignores order, so it is withheld from the
+    //* upstream query; every other sort keeps GitHub's own ordering.
+    const upstreamSort = input.sort === "stars" ? undefined : input.sort;
+    const upstreamOrder = input.sort === "stars" ? undefined : input.order;
+    const gathered = await gatherRepos(ctx, user, input.type, input.fresh, upstreamSort, upstreamOrder);
+    let ranked = applyRepoFilters(gathered.payloads.map(projectRepo), input.include_forks, input.min_stars);
     if (input.sort === "stars") {
-      const gathered = await gatherRepos(ctx, user, input.type, input.fresh);
-      const ranked = applyRepoFilters(gathered.payloads.map(projectRepo), input.include_forks, input.min_stars)
-        //* filter() returns a fresh array, so the in-place stable sort is safe;
-        //* ties keep the upstream order the gather saw.
-        .sort((a, b) => b.stars - a.stars);
-      const start = (page - 1) * perPage;
-      const windowItems = ranked.slice(start, start + perPage);
-      const hasMore = start + perPage < ranked.length;
-      //? Multi-request mode: the scarcest observation across every gathered
-      //* page (lowest remaining, tagged with its resource) is the honest worst
-      //* case, undefined when nothing produced a result. The gather issues
-      //* exactly one request per entry in results, so the batch's call count is
-      //* that length.
-      const meta = scarcestMeta(gathered.results, gathered.results.length);
-      return {
-        items: windowItems,
-        page,
-        per_page: perPage,
-        has_more: hasMore,
-        next_page: hasMore ? page + 1 : null,
-        //? gather_truncated appears only when the cap stopped the gather, the
-        //* same conditional spread the meta key uses.
-        ...(gathered.truncated ? { gather_truncated: true } : {}),
-        ...(meta !== undefined ? { meta } : {}),
-      };
+      //* filter() returned a fresh array, so the in-place stable sort is safe;
+      //* ties keep the upstream order the gather saw.
+      ranked = ranked.sort((a, b) => b.stars - a.stars);
     }
-
-    const query = githubQuery({ type: input.type, sort: input.sort, order: input.order, page, per_page: perPage });
-    const result = await ctx.client.api<RepoResponse[]>(`/users/${user}/repos${query}`, {
-      fresh: input.fresh,
-      cacheTtlMs: 120_000,
-    });
-    const { data, headers } = result;
-    const meta = responseMeta(result, 1);
-    //? Passthrough mode: filters apply per page, so a filtered page can come
-    //* back short while has_more/next_page stay Link-derived (the search
-    //* public_only precedent, documented in the description).
-    const items = applyRepoFilters(data.map(projectRepo), input.include_forks, input.min_stars);
-    //? meta is spread after the list envelope so it stays the trailing key and
-    //* stays absent entirely when the client reported no cache outcome.
+    //? The whole gathered window is filtered before slicing, so a requested
+    //* page is full and has_more/next_page describe the filtered window rather
+    //* than the raw upstream pages.
+    const start = (page - 1) * perPage;
+    const windowItems = ranked.slice(start, start + perPage);
+    const hasMore = start + perPage < ranked.length;
+    //? Multi-request mode: the scarcest observation across every gathered page
+    //* (lowest remaining, tagged with its resource) is the honest worst case;
+    //* one request per gathered result gives the batch's call count.
+    const meta = scarcestMeta(gathered.results, gathered.results.length);
     return {
-      ...listEnvelope(items, page, perPage, headers.get("link")),
+      items: windowItems,
+      page,
+      per_page: perPage,
+      has_more: hasMore,
+      next_page: hasMore ? page + 1 : null,
+      //? gather_truncated appears only when the cap stopped the gather, and
+      //* meta trails the fixed keys while staying absent when no result reported.
+      ...(gathered.truncated ? { gather_truncated: true } : {}),
       ...(meta !== undefined ? { meta } : {}),
     };
   },
@@ -311,7 +298,7 @@ export const userEventsTool = defineTool({
   name: "github_user_events",
   title: "GitHub user events",
   description:
-    "List a user's public events with the event type, repository, and time; private events are never included, only the public feed. Costs 1 core call. Returns {items[{type, repo, created_at}], page, per_page, has_more, next_page}.",
+    "List a user's public events with the event type, repository, and time; private events are never included, only the public feed. A 422 from GitHub's 90-day/300-event cap becomes a hinted invalid_params error. Costs 1 core call. Returns {items[{type, repo, created_at}], page, per_page, has_more, next_page}.",
   inputSchema: {
     user: z.string().regex(LOGIN_PATTERN).describe("GitHub user login, like octocat (alphanumerics and hyphens)"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
@@ -329,10 +316,25 @@ export const userEventsTool = defineTool({
     const page = input.page ?? 1;
     const perPage = input.per_page ?? 20;
     const query = githubQuery({ page, per_page: perPage });
-    const result = await ctx.client.api<EventResponse[]>(`/users/${user}/events/public${query}`, {
-      fresh: input.fresh,
-      cacheTtlMs: 60_000,
-    });
+    let result;
+    try {
+      result = await ctx.client.api<EventResponse[]>(`/users/${user}/events/public${query}`, {
+        fresh: input.fresh,
+        cacheTtlMs: 60_000,
+      });
+    } catch (error) {
+      //? GitHub caps the public events feed at 90 days or 300 events; only that
+      //* 422 is translated, with the hint mirrored at top level so direct callers
+      //* read it just as MCP clients read the lifted envelope field.
+      if (error instanceof GithubError && error.details.status === 422) {
+        const hint = "Use a smaller page or a more recent window.";
+        throw Object.assign(
+          new GithubError("invalid_params", "GitHub limits public events to the last 90 days or 300 events.", { hint }),
+          { hint },
+        );
+      }
+      throw error;
+    }
     const { data, headers } = result;
     const meta = responseMeta(result, 1);
     const items = data.map((event) => ({
