@@ -158,20 +158,22 @@ describe("runCli", () => {
     const treeCtx: ToolContext = {
       ...ctx,
       client: {
-        api: vi.fn(async () => ({
-          data: {
-            sha: "abc",
-            truncated: false,
-            tree: [
-              { path: "src/a.md", mode: "100644", type: "blob", size: 1, sha: "m1" },
-              { path: "src/b.ts", mode: "100644", type: "blob", size: 2, sha: "t1" },
-            ],
-          },
+        api: vi.fn(),
+        apiRaw: vi.fn(async () => ({
+          bytes: new TextEncoder().encode(
+            JSON.stringify({
+              sha: "abc",
+              truncated: false,
+              tree: [
+                { path: "src/a.md", mode: "100644", type: "blob", size: 1, sha: "m1" },
+                { path: "src/b.ts", mode: "100644", type: "blob", size: 2, sha: "t1" },
+              ],
+            }),
+          ),
           headers: new Headers(),
           status: 200,
           contentType: "application/json",
         })),
-        apiRaw: vi.fn(),
         raw: vi.fn(),
       } as unknown as ToolContext["client"],
     };

@@ -25,20 +25,63 @@ const fixture = {
   ],
 };
 
+//* Every tree fetch now reads raw bytes; the shared fake encodes a fixture into
+//* that shape. api stays a resolver stub for the ref-less cases, where resolveRef
+//* still issues its own repo request.
+function rawOk(data: unknown, state: "hit" | "revalidated" | "miss" = "miss") {
+  return {
+    bytes: new TextEncoder().encode(JSON.stringify(data)),
+    headers: new Headers(),
+    status: 200,
+    contentType: "application/json",
+    cache: { state },
+  };
+}
+
+function rawClient(data: unknown, state: "hit" | "revalidated" | "miss" = "miss"): GitHubApi {
+  return {
+    api: vi.fn(async () => ({
+      data: { default_branch: "main" },
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+      cache: { state: "miss" },
+    })),
+    apiRaw: vi.fn(async () => rawOk(data, state)),
+    raw: vi.fn(),
+  } as unknown as GitHubApi;
+}
+
+//* Recursive-timeout degrade fixtures: the first apiRaw call rejects with the
+//* timeout GithubError a real aborted request carries, then the non-recursive
+//* retry serves the given bytes.
+function degradedClient(retryData: unknown) {
+  return {
+    api: vi.fn(async () => ({
+      data: { default_branch: "main" },
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+      cache: { state: "miss" },
+    })),
+    apiRaw: vi
+      .fn()
+      .mockRejectedValueOnce(new GithubError("network", "The operation was aborted due to timeout"))
+      .mockResolvedValueOnce(rawOk(retryData)),
+    raw: vi.fn(),
+  } as unknown as GitHubApi;
+}
+
 describe("github_tree", () => {
   it("lists entries with normalized types and a recursive query", async () => {
-    //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
+    //? A concrete vi.fn return cannot satisfy the generic apiRaw signature, so the
     //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.
-    const client = {
-      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(fixture);
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World", ref: "main", recursive: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledWith(
+    expect(client.apiRaw).toHaveBeenCalledWith(
       "/repos/octocat/Hello-World/git/trees/main?recursive=1",
       { fresh: undefined, cacheTtlMs: 600_000 },
     );
@@ -75,17 +118,7 @@ describe("github_tree", () => {
   }
 
   it("caps the default 1000 entries and summarizes the full tree", async () => {
-    const client = {
-      api: vi.fn(async () => ({
-        data: blobTree(1001),
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(blobTree(1001));
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -109,17 +142,7 @@ describe("github_tree", () => {
   });
 
   it("honors a custom cap below the entry count", async () => {
-    const client = {
-      api: vi.fn(async () => ({
-        data: fixture,
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(fixture);
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World", max_entries: 2 },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -131,17 +154,7 @@ describe("github_tree", () => {
   });
 
   it("distinguishes GitHub's own truncation from the local cap", async () => {
-    const client = {
-      api: vi.fn(async () => ({
-        data: blobTree(3, true),
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(blobTree(3, true));
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -154,17 +167,7 @@ describe("github_tree", () => {
 
     //* Repair (spec section 7): when the local cap and GitHub truncation both
     //* apply, the GitHub-side hint wins over the local increase-max_entries one.
-    const combined = {
-      api: vi.fn(async () => ({
-        data: blobTree(1001, true),
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const combined = rawClient(blobTree(1001, true));
     const combinedOutput = await treeTool.handler(
       { repo: "octocat/Hello-World" },
       { client: combined, config: makeConfig(), authFingerprint: "abc" },
@@ -181,39 +184,19 @@ describe("github_tree", () => {
     expect(combinedSnapshot.hint).toBe("narrow path/ref; GitHub truncated the tree");
   });
 
-  //* Recursive-timeout degrade fixtures: the first call rejects with the timeout
-  //* GithubError a real aborted request carries, then the non-recursive retry serves the
-  //* given tree. Same mock-literal accommodation as above for the generic api<T>.
-  function degradedClient(retryData: unknown) {
-    return {
-      api: vi
-        .fn()
-        .mockRejectedValueOnce(new GithubError("network", "The operation was aborted due to timeout"))
-        .mockResolvedValueOnce({
-          data: retryData,
-          headers: new Headers(),
-          status: 200,
-          contentType: "application/json",
-          cache: { state: "miss" },
-        }),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
-  }
-
   it("degrades a recursive timeout into one non-recursive retry", async () => {
     const client = degradedClient(fixture);
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World", ref: "main", recursive: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledTimes(2);
-    expect(client.api).toHaveBeenNthCalledWith(
+    expect(client.apiRaw).toHaveBeenCalledTimes(2);
+    expect(client.apiRaw).toHaveBeenNthCalledWith(
       1,
       "/repos/octocat/Hello-World/git/trees/main?recursive=1",
       { fresh: undefined, cacheTtlMs: 600_000 },
     );
-    expect(client.api).toHaveBeenNthCalledWith(2, "/repos/octocat/Hello-World/git/trees/main", {
+    expect(client.apiRaw).toHaveBeenNthCalledWith(2, "/repos/octocat/Hello-World/git/trees/main", {
       fresh: undefined,
       cacheTtlMs: 600_000,
     });
@@ -255,10 +238,10 @@ describe("github_tree", () => {
   it("propagates non-timeout failures and a timing-out retry untouched", async () => {
     const refused = new GithubError("network", "connection refused");
     const refusedClient = {
-      api: vi.fn(async () => {
+      api: vi.fn(async () => ({ data: { default_branch: "main" } })),
+      apiRaw: vi.fn(async () => {
         throw refused;
       }),
-      apiRaw: vi.fn(),
       raw: vi.fn(),
     } as unknown as GitHubApi;
     await expect(
@@ -267,14 +250,14 @@ describe("github_tree", () => {
         { client: refusedClient, config: makeConfig(), authFingerprint: "abc" },
       ),
     ).rejects.toBe(refused);
-    expect(refusedClient.api).toHaveBeenCalledTimes(1);
+    expect(refusedClient.apiRaw).toHaveBeenCalledTimes(1);
 
     const timeoutError = new GithubError("network", "The operation was aborted due to timeout");
     const alwaysTimeout = {
-      api: vi.fn(async () => {
+      api: vi.fn(async () => ({ data: { default_branch: "main" } })),
+      apiRaw: vi.fn(async () => {
         throw timeoutError;
       }),
-      apiRaw: vi.fn(),
       raw: vi.fn(),
     } as unknown as GitHubApi;
     await expect(
@@ -283,21 +266,11 @@ describe("github_tree", () => {
         { client: alwaysTimeout, config: makeConfig(), authFingerprint: "abc" },
       ),
     ).rejects.toBe(timeoutError);
-    expect(alwaysTimeout.api).toHaveBeenCalledTimes(2);
+    expect(alwaysTimeout.apiRaw).toHaveBeenCalledTimes(2);
   });
 
   it("replaces entries with totals and top dirs in summary_only mode", async () => {
-    const client = {
-      api: vi.fn(async () => ({
-        data: fixture,
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(fixture);
     const output = await treeTool.handler(
       { repo: "octocat/Hello-World", ref: "main", summary_only: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -341,18 +314,14 @@ describe("github_tree", () => {
     //? Review focus: the tree request URL must carry the pinned SHA, not the
     //* branch the pin was created from; the sha also short-circuits the
     //* default-branch lookup, so exactly one upstream call happens.
-    const client = {
-      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(fixture);
     setPinnedRef(REPO, "main", "abc123def456");
     const output = await treeTool.handler(
       { repo: REPO, recursive: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledTimes(1);
-    expect(client.api).toHaveBeenCalledWith(
+    expect(client.apiRaw).toHaveBeenCalledTimes(1);
+    expect(client.apiRaw).toHaveBeenCalledWith(
       `/repos/${REPO}/git/trees/abc123def456?recursive=1`,
       { fresh: undefined, cacheTtlMs: 600_000 },
     );
@@ -363,17 +332,13 @@ describe("github_tree", () => {
   });
 
   it("lets an explicit ref win over the pin and omits pinned_sha", async () => {
-    const client = {
-      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
+    const client = rawClient(fixture);
     setPinnedRef(REPO, "main", "abc123def456");
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", recursive: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledWith(
+    expect(client.apiRaw).toHaveBeenCalledWith(
       `/repos/${REPO}/git/trees/main?recursive=1`,
       { fresh: undefined, cacheTtlMs: 600_000 },
     );
@@ -384,10 +349,10 @@ describe("github_tree", () => {
 describe("github_tree 404 recovery hints", () => {
   function failingClient(error: GithubError): GitHubApi {
     return {
-      api: vi.fn(async () => {
+      api: vi.fn(async () => ({ data: { default_branch: "main" } })),
+      apiRaw: vi.fn(async () => {
         throw error;
       }),
-      apiRaw: vi.fn(),
       raw: vi.fn(),
     } as unknown as GitHubApi;
   }
@@ -403,7 +368,7 @@ describe("github_tree 404 recovery hints", () => {
     expect(error.code).toBe("not_found");
     expect(error.details.hint).toBe("ref nope not found; check the branch or tag name");
     //? The ref-level hint needs no cache read, so still exactly one upstream call.
-    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.apiRaw).toHaveBeenCalledTimes(1);
   });
 
   it("decorates a path-scoped tree 404 with parent-directory siblings", async () => {
@@ -421,7 +386,7 @@ describe("github_tree 404 recovery hints", () => {
     expect(error.details.hint).toBe(
       'path "src/missing.ts" not found at ref main; entries in src: index.ts, util.ts',
     );
-    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.apiRaw).toHaveBeenCalledTimes(1);
   });
 
   it("returns the untouched 404 for a path miss with an empty cache", async () => {
@@ -437,23 +402,15 @@ describe("github_tree 404 recovery hints", () => {
 });
 
 describe("github_tree path normalization", () => {
-  function okClient(): GitHubApi {
-    return {
-      api: vi.fn(async () => ({ data: fixture, headers: new Headers(), status: 200, contentType: "application/json", cache: { state: "miss" } })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
-  }
-
   it("normalizes a dot path to the root listing with path-less counting", async () => {
     //? "." means the repo root: the request URL carries no path segment and the
     //* call behaves like a path-less read, so meta.calls keeps the same logic.
-    const client = okClient();
+    const client = rawClient(fixture);
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", path: "." },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
+    expect(client.apiRaw).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
       fresh: undefined,
       cacheTtlMs: 600_000,
     });
@@ -463,12 +420,12 @@ describe("github_tree path normalization", () => {
   });
 
   it("normalizes a dot-slash path the same way", async () => {
-    const client = okClient();
+    const client = rawClient(fixture);
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", path: "./" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
+    expect(client.apiRaw).toHaveBeenCalledWith("/repos/octocat/Hello-World/git/trees/main", {
       fresh: undefined,
       cacheTtlMs: 600_000,
     });
@@ -476,32 +433,18 @@ describe("github_tree path normalization", () => {
   });
 
   it("still rejects parent traversal paths before any upstream call", async () => {
-    const client = okClient();
+    const client = rawClient(fixture);
     await expect(
       treeTool.handler(
         { repo: REPO, ref: "main", path: ".." },
         { client, config: makeConfig(), authFingerprint: "abc" },
       ),
     ).rejects.toMatchObject({ code: "invalid_params" });
-    expect(client.api).not.toHaveBeenCalled();
+    expect(client.apiRaw).not.toHaveBeenCalled();
   });
 });
 
 describe("github_tree glob filtering", () => {
-  function okClient(data: unknown): GitHubApi {
-    return {
-      api: vi.fn(async () => ({
-        data,
-        headers: new Headers(),
-        status: 200,
-        contentType: "application/json",
-        cache: { state: "miss" },
-      })),
-      apiRaw: vi.fn(),
-      raw: vi.fn(),
-    } as unknown as GitHubApi;
-  }
-
   const mixed = {
     sha: "abc",
     truncated: false,
@@ -515,12 +458,12 @@ describe("github_tree glob filtering", () => {
   };
 
   it("filters the mapped entries before the cap and reports post-glob totals", async () => {
-    const client = okClient(mixed);
+    const client = rawClient(mixed);
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", glob: "src/*", max_entries: 2 },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
-    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.apiRaw).toHaveBeenCalledTimes(1);
     const snapshot = output as {
       entries: Array<{ path: string; type: string; size: number | null; sha: string }>;
       total_entries: number;
@@ -545,7 +488,7 @@ describe("github_tree glob filtering", () => {
   });
 
   it("reports zero matches without truncating", async () => {
-    const client = okClient(mixed);
+    const client = rawClient(mixed);
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", glob: "nope/*" },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -563,7 +506,7 @@ describe("github_tree glob filtering", () => {
   });
 
   it("keeps the GitHub-truncation hint when a post-glob cap also applies", async () => {
-    const client = okClient({ sha: "abc", truncated: true, tree: mixed.tree });
+    const client = rawClient({ sha: "abc", truncated: true, tree: mixed.tree });
     const output = await treeTool.handler(
       { repo: REPO, ref: "main", glob: "src/*", max_entries: 1 },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -583,7 +526,7 @@ describe("github_tree glob filtering", () => {
   });
 
   it("leaves summary_only full-tree and ignores the glob there", async () => {
-    const client = okClient(mixed);
+    const client = rawClient(mixed);
     const plain = await treeTool.handler(
       { repo: REPO, ref: "main", summary_only: true },
       { client, config: makeConfig(), authFingerprint: "abc" },
@@ -619,5 +562,113 @@ describe("github_tree glob filtering", () => {
     expect(schema.safeParse({ repo: "o/r", glob: "" }).success).toBe(false);
     expect(schema.safeParse({ repo: "o/r", glob: "a".repeat(201) }).success).toBe(false);
     expect(schema.safeParse({ repo: "o/r", glob: "*.ts" }).success).toBe(true);
+  });
+});
+
+describe("github_tree raw bytes, filters, and envelopes", () => {
+  //* Short entries keep at least one complete object inside a 64-byte clip: the
+  //* response-level sha/truncated keys follow the tree array, so a clipped body
+  //* carries a complete first object and a partial second one.
+  const bigTree = {
+    tree: Array.from({ length: 20 }, (_, index) => ({
+      path: `f${index}`,
+      mode: "1",
+      type: "blob",
+      sha: `s${index}`,
+    })),
+    sha: "abc",
+    truncated: false,
+  };
+
+  it("reads a large recursive tree from raw bytes and clips locally", async () => {
+    const client = {
+      api: vi.fn(),
+      apiRaw: vi.fn(async () => rawOk(bigTree)),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    //? An explicit ref keeps the single tree fetch the only counted call; the
+    //* documented activity counter adds one for a ref-less resolveRef instead.
+    const result = await treeTool.handler(
+      { repo: "o/r", ref: "main", recursive: true, max_bytes: 64 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const snapshot = result as {
+      truncated: boolean;
+      api_truncated: boolean;
+      entries: unknown[];
+      meta?: { calls: number };
+      hint?: string;
+    };
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.api_truncated).toBe(false);
+    expect(snapshot.entries.length).toBeGreaterThan(0);
+    expect(snapshot.meta?.calls).toBe(1);
+    expect(snapshot.hint).toContain("max_bytes");
+    expect(snapshot.hint).not.toContain("GITHUB_MCP_MAX_FILE_BYTES");
+  });
+
+  it("path_prefix and glob filter entries before max_entries", async () => {
+    const client = rawClient({
+      sha: "abc",
+      truncated: false,
+      tree: [
+        { path: "docs/a.md", mode: "100644", type: "blob", size: 1, sha: "d1" },
+        { path: "docs/b.md", mode: "100644", type: "blob", size: 1, sha: "d2" },
+        { path: "src/a.ts", mode: "100644", type: "blob", size: 2, sha: "f1" },
+      ],
+    });
+    const result = await treeTool.handler(
+      { repo: "o/r", ref: "main", glob: "**/*.md", path_prefix: "docs/", max_entries: 1 },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const snapshot = result as {
+      entries: Array<{ path: string }>;
+      returned_entries: number;
+      total_entries: number;
+    };
+    expect(snapshot.entries.every((entry) => entry.path.startsWith("docs/") && entry.path.endsWith(".md"))).toBe(true);
+    expect(snapshot.returned_entries).toBe(1);
+    expect(snapshot.total_entries).toBeGreaterThan(1);
+  });
+
+  it("glob with a separator implies recursion unless recursive is explicitly false", async () => {
+    const implied = rawClient(fixture);
+    await treeTool.handler(
+      { repo: "o/r", ref: "main", glob: "src/*.ts" },
+      { client: implied, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(implied.apiRaw).toHaveBeenCalledWith(
+      "/repos/o/r/git/trees/main?recursive=1",
+      { fresh: undefined, cacheTtlMs: 600_000 },
+    );
+
+    const explicit = rawClient(fixture);
+    await treeTool.handler(
+      { repo: "o/r", ref: "main", glob: "src/*.ts", recursive: false },
+      { client: explicit, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(explicit.apiRaw).toHaveBeenCalledWith(
+      "/repos/o/r/git/trees/main",
+      { fresh: undefined, cacheTtlMs: 600_000 },
+    );
+  });
+
+  it("keeps the degraded timeout envelope", async () => {
+    const client = degradedClient(fixture);
+    const result = await treeTool.handler(
+      { repo: "o/r", recursive: true },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    const snapshot = result as { degraded?: boolean; hint?: string };
+    expect(snapshot.degraded).toBe(true);
+    expect(snapshot.hint).toContain("recursive listing timed out");
+  });
+
+  it("enforces the max_bytes bounds through the schema", () => {
+    const schema = z.object(treeTool.inputSchema);
+    expect(schema.safeParse({ repo: "o/r", max_bytes: 0 }).success).toBe(false);
+    expect(schema.safeParse({ repo: "o/r", max_bytes: 16 * 1024 * 1024 + 1 }).success).toBe(false);
+    expect(schema.safeParse({ repo: "o/r", max_bytes: 2 * 1024 * 1024 }).success).toBe(true);
+    expect(schema.safeParse({ repo: "o/r", path_prefix: "docs/" }).success).toBe(true);
   });
 });

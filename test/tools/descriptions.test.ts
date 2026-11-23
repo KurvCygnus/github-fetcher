@@ -128,17 +128,19 @@ describe("tool descriptions", () => {
 
   it("declares exactly the github_tree handler's fields", async () => {
     const client = {
-      api: vi.fn(async () => ({
-        data: {
-          sha: "abc",
-          truncated: false,
-          tree: [{ path: "README.md", mode: "100644", type: "blob", size: 12, sha: "f1" }],
-        },
+      api: vi.fn(),
+      apiRaw: vi.fn(async () => ({
+        bytes: new TextEncoder().encode(
+          JSON.stringify({
+            sha: "abc",
+            truncated: false,
+            tree: [{ path: "README.md", mode: "100644", type: "blob", size: 12, sha: "f1" }],
+          }),
+        ),
         headers: new Headers(),
         status: 200,
         contentType: "application/json",
       })),
-      apiRaw: vi.fn(),
       raw: vi.fn(),
     } as unknown as GitHubApi;
     const output = await treeTool.handler(
