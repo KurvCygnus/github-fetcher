@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
-## [0.6.1] - Unreleased
+## [0.6.1] - 2026-11-23
 
 ### Added
 
@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
-- Repo-scoped search: parse `repo:`, `state:`, and `label:` qualifiers out of free-form queries, filter pull requests client-side, and return a null `total_count` with `repo_scoped`, `filtered_count`, and Link-derived pagination; `sort: reactions` on a repo-scoped query now fails with a recovery hint.
+- Repo-scoped search: parse `repo:`, `state:`, and `label:` qualifiers out of free-form queries, filter pull requests client-side, and return a null `total_count` with `repo_scoped`, `filtered_count`, and Link-derived pagination. `sort: reactions` and free text or unsupported qualifiers on a repo-scoped query now fail with a recovery hint instead of being silently ignored.
 - Recursive tree: fetch through the raw API so large responses are clipped as bytes instead of failing upstream JSON parsing; add `path_prefix` and `max_bytes`, filter before projection, and report truncation honestly while keeping the explicit degraded fallback.
 - Pin hygiene: resolve branch and tag pins through the commits list endpoint, echo `pinned_sha` on file, tree, grep, and batch reads anchored by a pin, and have `github_doctor` list the session's active pin keys.
 - Pagination and projection: filter user repositories before paging with honest `has_more`/`next_page` and `gather_truncated`; add `created_at` to user-repo and search projections; turn an upstream 422 from `github_user_events` into a hinted `invalid_params`; add `patch_truncated` and `total_files` to `github_compare_refs`; add a per-file `max_bytes` to `github_files`.

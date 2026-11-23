@@ -776,7 +776,7 @@ describe("init --transport", () => {
         ensureDaemon: async (options) => {
           ensureCalls += 1;
           options.deps?.stdout.write('{"started":true}\n');
-          return { pid: process.pid, port: 51515, token: "fake", startedAt: "2026-11-22T00:00:00.000Z", version: "0.6.0" };
+          return { pid: process.pid, port: 51515, token: "fake", startedAt: "2026-11-22T00:00:00.000Z", version: "0.6.1" };
         },
       },
     );
