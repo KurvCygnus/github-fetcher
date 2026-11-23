@@ -299,20 +299,44 @@ describe("github_batch_activity", () => {
     try {
       const pending = batchActivityTool.handler({ repos: ["o/slow", "o/fast"] }, ctx);
       for (let index = 0; index < 24; index += 1) await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(8000);
+      await vi.advanceTimersByTimeAsync(25_000);
       const result = await pending;
       const items = itemsOf(result);
 
       expect(items[0]).toMatchObject({
         repo: "o/slow",
         ok: false,
-        error: { code: "timeout", message: expect.stringContaining("Timed out after 8000ms") },
+        error: { code: "timeout", message: expect.stringContaining("Timed out after 25000ms") },
         calls: 0,
         attempts: 1,
       });
       expect(items[1]).toMatchObject({ repo: "o/fast", ok: true, calls: 5, attempts: 5 });
       expect(result.meta).toEqual({ cache: "miss", calls: 5 });
       expect(api.mock.calls.some((call) => call[0] === slow.pulls)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits a trailing miss meta when every repo times out", async () => {
+    const api = vi.fn(async (_url: string) => new Promise<never>(() => {}));
+    const client = { api, apiRaw: vi.fn(), raw: vi.fn() } as unknown as ToolContext["client"];
+    const ctx: ToolContext = { client, config: makeConfig(), authFingerprint: "abc" };
+
+    vi.useFakeTimers();
+    try {
+      const pending = batchActivityTool.handler({ repos: ["o/a", "o/b"] }, ctx);
+      for (let index = 0; index < 24; index += 1) await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(25_000);
+      const result = await pending;
+
+      expect(itemsOf(result).map((item) => item.error)).toEqual([
+        { code: "timeout", message: expect.stringContaining("Timed out after 25000ms") },
+        { code: "timeout", message: expect.stringContaining("Timed out after 25000ms") },
+      ]);
+      expect(result.meta).toEqual({ cache: "miss", calls: 0 });
+      expect(Object.keys(result)).toEqual(["window_days", "top_n", "generated_at", "items", "meta"]);
+      expect(Object.keys(result).at(-1)).toBe("meta");
     } finally {
       vi.useRealTimers();
     }

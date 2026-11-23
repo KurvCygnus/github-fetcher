@@ -161,6 +161,10 @@ export class GithubClient implements GitHubApi {
     try {
       return { ...result, data: JSON.parse(result.text) as T };
     } catch {
+      //* A malformed JSON 200 is cached like any other JSON body, so leaving it
+      //* in place would replay the failure as a hit forever. Evict under the key
+      //* fetchCached used before surfacing upstream so the next call refetches.
+      await this.options.cache.delete(cacheKey(url, this.options.authFingerprint));
       throw new GithubError("upstream", `GitHub returned invalid JSON for ${url}`);
     }
   }

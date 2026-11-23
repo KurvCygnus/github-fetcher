@@ -198,5 +198,12 @@ describe("tool descriptions", () => {
     expect(tool.description).toContain("core endpoints only");
     expect(tool.description).toContain("search quota untouched");
     expect(tool.description).toContain("result is discarded");
+    expect(tool.description).toContain("four to seven core GETs");
+    expect(tool.description).toContain("25-second per-repo timeout");
+  });
+
+  it("states that GitHub's labels endpoint has no issue counts", () => {
+    const labels = allTools.find((tool) => tool.name === "github_labels")!;
+    expect(labels.description).toContain("does not supply issue counts");
   });
 });

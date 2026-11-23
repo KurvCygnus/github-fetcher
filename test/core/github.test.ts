@@ -194,6 +194,23 @@ describe("GithubClient", () => {
     await expect(client.api("/repos/a/b")).rejects.toMatchObject({ code: "upstream" });
   });
 
+  it("evicts a malformed JSON body from the cache so the next call refetches", async () => {
+    const { client, get } = harness();
+    get.mockResolvedValueOnce(
+      httpResponse(200, "<html>not json</html>", { "content-type": "application/json" }),
+    );
+    await expect(client.api("/repos/a/b", { cacheTtlMs: 60_000 })).rejects.toMatchObject({ code: "upstream" });
+    expect(get).toHaveBeenCalledTimes(1);
+
+    get.mockResolvedValueOnce(
+      httpResponse(200, JSON.stringify({ ok: true }), { "content-type": "application/json" }),
+    );
+    const result = await client.api<{ ok: boolean }>("/repos/a/b", { cacheTtlMs: 60_000 });
+    expect(result.data).toEqual({ ok: true });
+    expect(result.cache).toEqual({ state: "miss" });
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
   it("serves fresh entries from the cache until the TTL expires", async () => {
     const { client, get, clock } = harness();
     get.mockResolvedValue(

@@ -15,12 +15,12 @@ interface LabelResponse {
 export const labelsTool = defineTool({
   name: "github_labels",
   title: "GitHub labels",
-  description: "List repository labels with their name, color, description, and optional upstream issue counts. Returns {repo, items[{name, color, description, open_issues_count, closed_issues_count}], page, per_page, has_more, next_page, meta}.",
+  description: "List repository labels with their name, color, and description. GitHub's labels endpoint does not supply issue counts, so open_issues_count and closed_issues_count stay null even with with_counts true; no extra call is made. Returns {repo, items[{name, color, description, open_issues_count, closed_issues_count}], page, per_page, has_more, next_page, meta}.",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     page: z.number().int().min(1).optional().describe("Page number, starting at 1"),
     per_page: z.number().int().min(1).max(100).optional().describe("Items per page, 1-100, default 30"),
-    with_counts: z.boolean().optional().describe("Copy upstream open_issues_count and closed_issues_count when present, else null; no extra calls"),
+    with_counts: z.boolean().optional().describe("GitHub's labels endpoint does not supply issue counts, so both counts stay null; no extra calls"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
   },
   annotations: {

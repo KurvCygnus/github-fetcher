@@ -4,7 +4,7 @@ import type { ToolContext } from "../core/context.js";
 import { GithubError } from "../core/errors.js";
 import { defineTool } from "./define.js";
 import { windowStartDate } from "./health.js";
-import type { MetaSource } from "./meta.js";
+import type { MetaSource, ResponseMeta } from "./meta.js";
 import { scarcestMeta } from "./meta.js";
 import { parseLastPage, parseNextPage } from "./pagination.js";
 import { parseRepo } from "./util.js";
@@ -34,15 +34,19 @@ interface RepoOutcome {
 
 const MAX_REPOS = 5;
 const CONCURRENCY = 2;
-const PER_REPO_TIMEOUT_MS = 8000;
+//* A cold-cache repo issues four to seven sequential GETs that can each spend
+//* seconds in transit; 8 s expired before the first result on slow links, so a
+//* 25-second window keeps the per-repo isolation without shedding healthy repos.
+const PER_REPO_TIMEOUT_MS = 25_000;
 const CONTRIB_PAGES = 3;
 const CONTRIB_PER_PAGE = 100;
 const CALL_TTL_MS = 120_000;
 const COMMIT_PAGE_SIZE = 100;
 
-//* Each repo owns one worker with its own counters. The five core GETs run in
-//* sequence inside one timeout so a slow repo is isolated from the rest of the
-//* batch while its abandoned request keeps no claim on the returned results.
+//* Each repo owns one worker with its own counters. Its four to seven core GETs
+//* run in sequence inside one 25-second timeout so a slow repo is isolated from
+//* the rest of the batch while its abandoned request keeps no claim on the
+//* returned results.
 async function runRepo(
   ctx: ToolContext,
   repoSpec: string,
@@ -158,7 +162,7 @@ export const batchActivityTool = defineTool({
   name: "github_batch_activity",
   title: "GitHub batch activity snapshot",
   description:
-    "Windowed activity snapshot for up to 5 repositories in one call: stars, forks, open issues/PRs, recent commits, CI run conclusions, and top contributors with their share. Uses core endpoints only; search quota untouched. Each repository's five core GETs run sequentially under an 8-second per-repo timeout: a timed-out repository reports ok:false while the others stay ok:true, and the abandoned request's result is discarded. Contributor gathering stops after 3 pages of 100. Returns {window_days, top_n, generated_at, items[repo item or error item], meta}.",
+    "Windowed activity snapshot for up to 5 repositories in one call: stars, forks, open issues/PRs, recent commits, CI run conclusions, and top contributors with their share. Uses core endpoints only; search quota untouched. Each repository's four to seven core GETs run sequentially under a 25-second per-repo timeout: a timed-out repository reports ok:false while the others stay ok:true, and the abandoned request's result is discarded. Contributor gathering stops after 3 pages of 100. Returns {window_days, top_n, generated_at, items[repo item or error item], meta}.",
   inputSchema: {
     repos: z.array(z.string()).min(1).max(MAX_REPOS).describe("Repositories in owner/name form, at most 5"),
     window_days: z.number().int().min(1).max(90).optional().describe("Analysis window in days, 1-90, default 30"),
@@ -184,13 +188,16 @@ export const batchActivityTool = defineTool({
     //* repo's observations into one scarcest meta stamped with the total calls.
     const observations = outcomes.flatMap((outcome) => outcome.results);
     const totalCalls = outcomes.reduce((sum, outcome) => sum + outcome.calls, 0);
-    const meta = scarcestMeta(observations, totalCalls);
+    //* Every repo can time out without a single completed ApiResult, leaving no
+    //* observed cache state to report; miss is the only honest label while calls
+    //* still counts the client invocations that were attempted.
+    const meta: ResponseMeta = scarcestMeta(observations, totalCalls) ?? { cache: "miss", calls: totalCalls };
     return {
       window_days: windowDays,
       top_n: topN,
       generated_at: new Date().toISOString(),
       items: outcomes.map((outcome) => outcome.item),
-      ...(meta !== undefined ? { meta } : {}),
+      meta,
     };
   },
 });
