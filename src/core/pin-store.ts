@@ -5,6 +5,7 @@ export interface PinStore {
   get(repo: string): { ref: string; sha: string } | undefined;
   set(repo: string, ref: string, sha: string): void;
   delete(repo: string): void;
+  keys(): string[];
 }
 
 //* Back each store with its own map so two sessions never share pin state; the
@@ -20,6 +21,9 @@ export function createPinStore(): PinStore {
     },
     delete(repo) {
       entries.delete(repo);
+    },
+    keys() {
+      return [...entries.keys()];
     },
   };
 }

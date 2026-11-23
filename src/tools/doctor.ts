@@ -110,7 +110,7 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
     name: "github_doctor",
     title: "GitHub health check",
     description:
-      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with a TCP reachability probe of the resolved proxy, local cache state, and current quota. Costs 1 core call. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, meta{cache}}.",
+      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with a TCP reachability probe of the resolved proxy, local cache state, current quota, and pinned_repos listing this session's pinned repositories. Costs 1 core call. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, pinned_repos, meta{cache}}.",
     inputSchema: {},
     annotations: {
       readOnlyHint: true,
@@ -174,8 +174,9 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
 
       //? cacheTtlMs: 0 means the quota call never reads the cache, so the outcome
       //* is always a miss; the fallback keeps the envelope honest for callers that
-      //* report no cache outcome at all. meta is spread last so it trails the
-      //* fixed keys, and identity sits between token and proxy per the shape.
+      //* report no cache outcome at all. Pins come from this context's own store,
+      //* so one session never lists another's pins. meta trails the fixed keys,
+      //* and identity sits between token and proxy per the shape.
       const meta = responseMeta({ cache: quotaCall.cache }, calls) ?? { cache: "miss" as const, calls };
       return {
         token: { present: ctx.authFingerprint !== "anonymous" },
@@ -183,6 +184,7 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
         proxy: { mode: ctx.config.proxyMode, url: proxy.url, reachable },
         cache: { mode: ctx.config.cacheMode, dir: cacheDir, entries: cacheStats.entries, bytes: cacheStats.bytes },
         quota,
+        pinned_repos: ctx.pins?.keys() ?? [],
         meta,
       };
     },

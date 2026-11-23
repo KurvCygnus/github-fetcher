@@ -35,9 +35,11 @@ function clientForRoutes(commits: Record<string, string>): GitHubApi {
           cache: { state: "miss" },
         };
       }
-      const prefix = `/repos/${REPO}/commits/`;
+      //? Branch and tag pins use the commit list endpoint, which takes the ref
+      //* in a sha query parameter and answers an array of commits.
+      const prefix = `/repos/${REPO}/commits?sha=`;
       if (path.startsWith(prefix)) {
-        const requested = decodeURIComponent(path.slice(prefix.length).split("?")[0] ?? "");
+        const requested = decodeURIComponent(path.slice(prefix.length).split("&")[0] ?? "");
         const sha = commits[requested];
         if (sha === undefined) throw new GithubError("not_found", "Not Found");
         return {
@@ -64,7 +66,7 @@ describe("github_pin_ref", () => {
     const client = clientForRoutes({ main: SHA_RESOLVED });
     const output = await pinTool.handler({ repo: REPO, ref: "main" }, ctxFor(client));
     expect(client.api).toHaveBeenCalledTimes(1);
-    expect(client.api).toHaveBeenCalledWith(`/repos/${REPO}/commits/main?per_page=1`, {
+    expect(client.api).toHaveBeenCalledWith(`/repos/${REPO}/commits?sha=main&per_page=1`, {
       fresh: undefined,
       cacheTtlMs: 120_000,
     });
@@ -76,6 +78,29 @@ describe("github_pin_ref", () => {
       meta: { cache: "miss", calls: 1 },
     });
     expect(getPinnedRef(REPO)).toEqual({ ref: "main", sha: SHA_RESOLVED });
+  });
+
+  it("pins a branch using the commits list endpoint", async () => {
+    //? The list endpoint takes the ref in a sha query parameter and answers an
+    //* array; the resolver must read the first entry as the immutable sha.
+    const sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+    const client = {
+      api: vi.fn(async (path: string) => {
+        expect(path).toBe("/repos/o/r/commits?sha=main&per_page=1");
+        return {
+          data: [{ sha }],
+          headers: new Headers(),
+          status: 200,
+          contentType: "application/json",
+          cache: { state: "miss" },
+        };
+      }),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await pinTool.handler({ repo: "o/r", ref: "main" }, ctxFor(client));
+    expect(output).toMatchObject({ repo: "o/r", ref: "main", sha, pinned: true });
+    expect(getPinnedRef("o/r")).toEqual({ ref: "main", sha });
   });
 
   it("pins an explicit full sha without an upstream call", async () => {
@@ -94,7 +119,7 @@ describe("github_pin_ref", () => {
       fresh: undefined,
       cacheTtlMs: 600_000,
     });
-    expect(client.api).toHaveBeenNthCalledWith(2, `/repos/${REPO}/commits/main?per_page=1`, {
+    expect(client.api).toHaveBeenNthCalledWith(2, `/repos/${REPO}/commits?sha=main&per_page=1`, {
       fresh: undefined,
       cacheTtlMs: 120_000,
     });
@@ -170,7 +195,21 @@ describe("github_pin_ref", () => {
     setPinnedRef("o/r", "main", "sha-a", ctxA);
     expect(getPinnedRef("o/r", ctxA)).toEqual({ ref: "main", sha: "sha-a" });
     expect(getPinnedRef("o/r", ctxB)).toBeUndefined();
+    expect(ctxA.pins?.keys()).toEqual(["o/r"]);
+    expect(ctxB.pins?.keys()).toEqual([]);
     clearPinnedRef("o/r", ctxA);
     expect(getPinnedRef("o/r", ctxA)).toBeUndefined();
+    expect(ctxA.pins?.keys()).toEqual([]);
+  });
+
+  it("reports the current pin keys and updates them as pins change", () => {
+    //* Doctor reads these keys to list the pins that live in its own context.
+    const store = createPinStore();
+    expect(store.keys()).toEqual([]);
+    store.set("o/r", "main", "sha-a");
+    store.set("o/other", "main", "sha-b");
+    expect(store.keys()).toEqual(["o/r", "o/other"]);
+    store.delete("o/r");
+    expect(store.keys()).toEqual(["o/other"]);
   });
 });

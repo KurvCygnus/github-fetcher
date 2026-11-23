@@ -7,7 +7,7 @@ import type { PinStore } from "../core/pin-store.js";
 import { defineTool } from "./define.js";
 import type { ResponseMeta } from "./meta.js";
 import { responseMeta } from "./meta.js";
-import { githubQuery, parseRepo } from "./util.js";
+import { parseRepo } from "./util.js";
 
 //? One default store backs callers that omit ctx: the stdio path and legacy
 //* tests that pin through the helpers without a ToolContext. Session-aware
@@ -57,8 +57,11 @@ async function resolveHeadCommit(
   name: string,
   ref: string,
 ): Promise<{ result: ApiResult<CommitHead[]>; sha: string }> {
+  //? The ref is a query parameter, not a path segment: a branch like feature/x
+  //* must be encoded once, and passing it through URLSearchParams would encode
+  //* the percent signs of that encoding a second time.
   const result = await client.api<CommitHead[]>(
-    `/repos/${owner}/${name}/commits/${encodeURIComponent(ref)}${githubQuery({ per_page: 1 })}`,
+    `/repos/${owner}/${name}/commits?sha=${encodeURIComponent(ref)}&per_page=1`,
     { fresh: undefined, cacheTtlMs: 120_000 },
   );
   const head = result.data[0];
@@ -72,7 +75,7 @@ export const pinTool = defineTool({
   name: "github_pin_ref",
   title: "GitHub pin ref",
   description:
-    "Pin a repository to a commit for the session: file, tree, and commit reads without an explicit ref anchor to this sha, keeping line-number references internally consistent across a session. The pin lives in server memory and is lost on restart. Costs 1 core call (2 for a default-branch pin; 0 when unpinning or passing a full sha). Returns {repo, ref, sha, pinned}; after an unpin the answer carries only repo and pinned (false).",
+    "Pin a repository to a commit for the session: file, tree, grep, and batch reads without an explicit ref anchor to this sha, keeping line-number references internally consistent across a session. An anchored read echoes pinned_sha in its success envelope; an explicit ref suppresses it. The pin lives in server memory and is lost on restart. Costs 1 core call (2 for a default-branch pin; 0 when unpinning or passing a full sha). Returns {repo, ref, sha, pinned}; after an unpin the answer carries only repo and pinned (false).",
   inputSchema: {
     repo: z.string().describe("Repository in owner/name form"),
     ref: z

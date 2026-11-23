@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubApi } from "../../src/core/github.js";
+import { createPinStore } from "../../src/core/pin-store.js";
 import { createDoctorTool, doctorTool } from "../../src/tools/doctor.js";
 import { makeConfig } from "../helpers.js";
 
@@ -55,6 +56,7 @@ describe("github_doctor", () => {
         core: { limit: 5000, remaining: 4999, reset: "2023-11-14T22:23:20.000Z" },
         search: { limit: 30, remaining: 30, reset: "2023-11-14T22:14:20.000Z" },
       },
+      pinned_repos: [],
       meta: { cache: "miss", calls: 1 },
     });
     expect(probe).not.toHaveBeenCalled();
@@ -178,6 +180,32 @@ describe("github_doctor", () => {
     expect(result.token).toEqual({ present: false });
     expect(result.identity).toEqual({ authenticated_as: null, scopes: [] });
     expect(client.api).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists only the current context's pins in pinned_repos", async () => {
+    //* A context without a pin store reports no pins; a context with one lists
+    //* its own keys, never another context's keys.
+    const client = rateClient();
+    const tool = createDoctorTool({ probe: async () => true, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const pinsA = createPinStore();
+    const pinsB = createPinStore();
+    pinsA.set("o/r", "main", "sha-a");
+    pinsB.set("o/other", "main", "sha-b");
+    const resultA = await tool.handler(
+      {},
+      { client, config: makeConfig({ proxyMode: "direct" }), authFingerprint: "abc", pins: pinsA },
+    );
+    const resultB = await tool.handler(
+      {},
+      { client, config: makeConfig({ proxyMode: "direct" }), authFingerprint: "abc", pins: pinsB },
+    );
+    const resultNone = await tool.handler(
+      {},
+      { client, config: makeConfig({ proxyMode: "direct" }), authFingerprint: "abc" },
+    );
+    expect(resultA.pinned_repos).toEqual(["o/r"]);
+    expect(resultB.pinned_repos).toEqual(["o/other"]);
+    expect(resultNone.pinned_repos).toEqual([]);
   });
 
   it("exports a ready-made tool with an empty input schema", () => {
