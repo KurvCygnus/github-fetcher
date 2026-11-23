@@ -14,8 +14,7 @@ import {
   validateClients,
   validateName,
 } from "./clients-flow.js";
-import { selectFromMenu } from "./tui.js";
-import type { TuiDeps, TuiItem } from "./tui.js";
+import { createClackAdapter } from "./prompts.js";
 
 export interface RemoveOptions {
   clients?: string[] | undefined;
@@ -24,11 +23,42 @@ export interface RemoveOptions {
   nameExplicit?: boolean | undefined;
 }
 
+export interface RemoveItem {
+  id: string;
+  label: string;
+  note?: string | undefined;
+}
+
+export interface RemoveSelectDeps {
+  input: NodeJS.ReadStream;
+  output: NodeJS.WritableStream;
+}
+
 export type SelectFn = (
-  items: readonly TuiItem[],
-  deps: TuiDeps,
+  items: readonly RemoveItem[],
+  deps: RemoveSelectDeps,
   preselected?: readonly string[],
 ) => Promise<string[] | null>;
+
+//* The selection list reuses the clack adapter so remove prompts reach the injected
+//* output stream; stdout stays reserved for the JSON result array.
+async function selectFromMenu(
+  items: readonly RemoveItem[],
+  deps: RemoveSelectDeps,
+  preselected: readonly string[] = [],
+): Promise<string[] | null> {
+  const adapter = createClackAdapter(deps.output, deps.input);
+  const picked = await adapter.multiselect({
+    message: "Select MCP clients to remove",
+    options: items.map((item) => ({
+      value: item.id,
+      label: item.label,
+      ...(item.note === undefined ? {} : { hint: item.note }),
+    })),
+    initialValues: preselected,
+  });
+  return picked === null ? null : [...picked];
+}
 
 export interface RemoveDeps {
   stdout: NodeJS.WritableStream;
@@ -205,7 +235,7 @@ export async function runRemove(arg: RemoveOptions | string[], deps: RemoveDeps)
       deps.stdout.write("[]\n");
       return 0;
     }
-    const items: TuiItem[] = matches.map((adapter) => ({ id: adapter.id, label: adapter.label }));
+    const items: RemoveItem[] = matches.map((adapter) => ({ id: adapter.id, label: adapter.label }));
     //* Every listed adapter already contains the entry, so all of them start selected.
     const preselected = matches.map((adapter) => adapter.id);
     const select = deps.select ?? selectFromMenu;

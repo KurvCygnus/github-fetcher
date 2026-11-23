@@ -20,8 +20,8 @@ import {
   validateClients,
   validateName,
 } from "./clients-flow.js";
-import { selectFromMenu } from "./tui.js";
-import type { TuiDeps, TuiItem } from "./tui.js";
+import { createClackAdapter } from "./prompts.js";
+import type { PromptAdapter } from "./prompts.js";
 
 export interface InitOptions {
   clients?: string[] | undefined;
@@ -32,12 +32,6 @@ export interface InitOptions {
   transport?: "stdio" | "http" | undefined;
 }
 
-export type SelectFn = (
-  items: readonly TuiItem[],
-  deps: TuiDeps,
-  preselected?: readonly string[],
-) => Promise<string[] | null>;
-
 export interface InitDeps {
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
@@ -45,8 +39,8 @@ export interface InitDeps {
   cwd?: string | undefined;
   interactive?: boolean | undefined;
   input?: NodeJS.ReadStream | undefined;
-  //? Injection seam for the TUI: tests exercise cancel/confirm without a real terminal.
-  select?: SelectFn | undefined;
+  //? Injection seam for the wizard: tests drive the full prompt sequence without a terminal.
+  prompts?: PromptAdapter | undefined;
   //* Both seams keep the HTTP path offline: no daemon spawn and no real adapter set
   //* is required to verify the config that would be written.
   ensureDaemon?: typeof ensureDaemon | undefined;
@@ -149,33 +143,93 @@ function selectByFlags(adapters: readonly ClientAdapter[], requested: readonly s
     .map((adapter) => ({ adapter, explicit: named.has(adapter.id) }));
 }
 
+function wizardPrompts(deps: InitDeps): PromptAdapter {
+  //* Production writes prompts to stderr so that stdout stays a clean JSON result stream.
+  return deps.prompts ?? createClackAdapter(deps.stderr, deps.input);
+}
+
+function previewLines(
+  selected: readonly SelectedAdapter[],
+  name: string,
+  nameExplicit: boolean,
+  home: string,
+  cwd: string,
+): string[] {
+  return selected.map(({ adapter }) => {
+    const candidates = adapter.candidates(home, cwd);
+    const path = candidates.find((candidate) => existsSync(candidate));
+    if (path === undefined) {
+      return `${adapter.label} (${adapter.id}): ${candidates[0] ?? "(no candidate path)"} - create config with entry "${name}"`;
+    }
+    try {
+      const existing = adapter.load(path);
+      const target = resolveTargetName(adapter, existing, name, nameExplicit);
+      if (target === null) {
+        return `${adapter.label} (${adapter.id}): ${path} - skip, entry "${name}" belongs to another server`;
+      }
+      const action = adapter.hasEntry(existing, target) ? "update" : "create";
+      return `${adapter.label} (${adapter.id}): ${path} - ${action} entry "${target}"`;
+    } catch {
+      return `${adapter.label} (${adapter.id}): ${path} - skip, config could not be read`;
+    }
+  });
+}
+
 async function selectInteractively(
   home: string,
   cwd: string,
   deps: InitDeps,
-): Promise<SelectedAdapter[] | null> {
+  prompts: PromptAdapter,
+  name: string,
+  nameExplicit: boolean,
+): Promise<{ selected: SelectedAdapter[]; transport: "stdio" | "http" } | null> {
   const adapters = deps.adapters ?? ADAPTERS;
   const detected = new Set(
     adapters
       .filter((adapter) => adapter.candidates(home, cwd).some((path) => existsSync(path)))
       .map((adapter) => adapter.id),
   );
-  const items: TuiItem[] = adapters.map((adapter) => ({
-    id: adapter.id,
-    label: adapter.label,
-    note: detected.has(adapter.id) ? "detected" : "not detected, will create",
-  }));
-  const select = deps.select ?? selectFromMenu;
-  const picked = await select(
-    items,
-    { input: deps.input ?? process.stdin, output: deps.stderr },
-    [...detected],
-  );
+
+  prompts.intro("github-fetcher init");
+
+  const picked = await prompts.multiselect({
+    message: "Select MCP clients to configure",
+    options: adapters.map((adapter) => ({
+      value: adapter.id,
+      label: adapter.label,
+      ...(detected.has(adapter.id) ? { hint: "(detected)" } : {}),
+    })),
+    initialValues: [...detected],
+  });
   if (picked === null) return null;
+
+  const transport = await prompts.select<"stdio" | "http">({
+    message: "Choose a transport",
+    options: [
+      { value: "stdio", label: "stdio", hint: "recommended" },
+      { value: "http", label: "http" },
+    ],
+    initialValue: "stdio",
+  });
+  if (transport === null) return null;
+
   const pickedIds = new Set(picked);
-  return adapters
+  const selected = adapters
     .filter((adapter) => pickedIds.has(adapter.id))
     .map((adapter) => ({ adapter, explicit: true }));
+
+  prompts.note(
+    [`Entry name: "${name}"`, "", ...previewLines(selected, name, nameExplicit, home, cwd)].join("\n"),
+    "config paths",
+  );
+
+  const confirmed = await prompts.confirm({
+    message: "Write these configurations?",
+    initialValue: true,
+  });
+  if (confirmed !== true) return null;
+
+  return { selected, transport };
 }
 
 interface ApplyContext {
@@ -322,64 +376,91 @@ export async function runInit(arg: InitOptions | string[], deps: InitDeps): Prom
   const requested = uniqueIds(options.clients ?? []);
   const all = options.all === true;
   const dryRun = options.dryRun === true;
-  const transport = options.transport ?? "stdio";
+  let transport: "stdio" | "http" = options.transport ?? "stdio";
   const interactive = deps.interactive ?? process.stdin.isTTY === true;
   const home = deps.home ?? homedir();
   const cwd = deps.cwd ?? process.cwd();
   const adapters = deps.adapters ?? ADAPTERS;
 
   let selected: SelectedAdapter[];
+  let wizard: PromptAdapter | undefined;
   if (requested.length > 0 || all || dryRun) {
     selected = selectByFlags(adapters, requested, all);
   } else if (interactive) {
-    const picked = await selectInteractively(home, cwd, deps);
+    wizard = wizardPrompts(deps);
+    const picked = await selectInteractively(
+      home,
+      cwd,
+      deps,
+      wizard,
+      options.name,
+      options.nameExplicit === true,
+    );
     if (picked === null) {
       deps.stdout.write(`${JSON.stringify([{ action: "cancelled" }])}\n`);
       return 0;
     }
-    selected = picked;
+    selected = picked.selected;
+    transport = picked.transport;
   } else {
     return usageError(deps, "init needs --client or --all in a non-interactive session");
   }
 
-  let remote: { url: string; tokenPath: string } | undefined;
-  if (transport === "http") {
-    let port: number;
-    if (dryRun) {
-      port = configuredPort(process.env);
-    } else {
-      //* ensureDaemon prints a start JSON line; a silent stdout keeps init's stdout
-      //* reserved for its own JSON result array.
-      const silentStdout = new Writable({
-        write(_chunk, _encoding, callback) {
-          callback();
-        },
-      });
-      port = (await (deps.ensureDaemon ?? ensureDaemon)({
-        env: process.env,
-        home,
-        platform: process.platform,
-        deps: { stdout: silentStdout, stderr: deps.stderr },
-      })).port;
+  const applyAll = async (): Promise<{ remote: { url: string; tokenPath: string } | undefined; results: InitResult[] }> => {
+    let remote: { url: string; tokenPath: string } | undefined;
+    if (transport === "http") {
+      let port: number;
+      if (dryRun) {
+        port = configuredPort(process.env);
+      } else {
+        //* ensureDaemon prints a start JSON line; a silent stdout keeps init's stdout
+        //* reserved for its own JSON result array.
+        const silentStdout = new Writable({
+          write(_chunk, _encoding, callback) {
+            callback();
+          },
+        });
+        port = (await (deps.ensureDaemon ?? ensureDaemon)({
+          env: process.env,
+          home,
+          platform: process.platform,
+          deps: { stdout: silentStdout, stderr: deps.stderr },
+        })).port;
+      }
+      remote = {
+        url: `http://127.0.0.1:${port}/mcp`,
+        tokenPath: daemonTokenPath(process.env, process.platform, home),
+      };
     }
-    remote = {
-      url: `http://127.0.0.1:${port}/mcp`,
-      tokenPath: daemonTokenPath(process.env, process.platform, home),
-    };
-  }
 
-  const context: ApplyContext = {
-    name: options.name,
-    nameExplicit: options.nameExplicit === true,
-    dryRun,
-    home,
-    cwd,
-    stderr: deps.stderr,
-    remote,
+    const context: ApplyContext = {
+      name: options.name,
+      nameExplicit: options.nameExplicit === true,
+      dryRun,
+      home,
+      cwd,
+      stderr: deps.stderr,
+      remote,
+    };
+    const results: InitResult[] = [];
+    for (const { adapter, explicit } of selected) {
+      results.push(await applyAdapter(adapter, explicit, context));
+    }
+    return { remote, results };
   };
-  const results: InitResult[] = [];
-  for (const { adapter, explicit } of selected) {
-    results.push(await applyAdapter(adapter, explicit, context));
+
+  let results: InitResult[];
+  if (wizard === undefined) {
+    results = (await applyAll()).results;
+  } else {
+    results = (await wizard.spinner("Writing configuration", applyAll)).results;
+    wizard.note(
+      results.length === 0
+        ? "No configuration changes"
+        : results.map((result) => `${result.client ?? "?"}: ${result.action}`).join("\n"),
+      "result",
+    );
+    wizard.outro("init complete");
   }
   deps.stdout.write(`${JSON.stringify(results)}\n`);
   await writeAuthStatus(deps.stderr);

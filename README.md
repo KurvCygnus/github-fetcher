@@ -138,7 +138,7 @@ After a global install (`npm i -g @kurvcygnus/github-fetcher`), the short alias 
 
 ### `init`
 
-`github-fetcher init` adds the `github` entry to your MCP client configuration. On a terminal it opens a selection menu (Space toggles, `a` toggles all, Enter confirms, Esc cancels; clients whose configuration already exists start selected). Scripts use flags instead:
+`github-fetcher init` adds the `github` entry to your MCP client configuration. On a terminal it opens a clack wizard: choose the clients (clients whose configuration already exists are marked `(detected)` and start selected), choose the transport (`stdio`, recommended, or `http`), review the config-path preview, and confirm before anything is written. Keyboard controls come from clack (arrow keys move, Space toggles, Enter confirms, Ctrl+C cancels), and every prompt and preview is written to stderr so stdout stays a clean JSON result stream. Scripts use flags instead:
 
     github-fetcher init --dry-run
     github-fetcher init --client opencode,cursor
@@ -148,13 +148,13 @@ After a global install (`npm i -g @kurvcygnus/github-fetcher`), the short alias 
 - By default, `init` reuses an existing entry whose `command` or `args` already point at this package, even under a legacy key such as `github-fetcher`, and updates that entry instead of adding a twin. `--name` disables resolution and forces that exact key. A key that already belongs to another server is never overwritten: when no owned legacy key exists, the client reports `skipped`, and `--name` selects another key.
 - A missing configuration is created only for a client selected explicitly (`--client`, or a pick in the menu); an undetected client that was not selected reports `not-installed` and nothing is written for it. `--all` alone covers every detected client and reports the rest as `not-installed`.
 - Every change to an existing file is preceded by a backup next to it as `<path>.bak.<timestamp>`; the backup completes before the target changes, and a rerun in the same second gets a numeric suffix instead of overwriting the earlier backup.
-- stdout carries one JSON array with one object per client (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`), including the resolved entry `name`; the resolved auth mode (`token` or `anonymous`) is reported on stderr. Cancelling the menu prints `cancelled` and exits 0.
+- stdout carries one JSON array with one object per client (`created`, `updated`, `skipped`, `not-installed`, `would-*`, `error`), including the resolved entry `name`; the resolved auth mode (`token` or `anonymous`) is reported on stderr. Cancelling the wizard prints a single `cancelled` result on stdout and exits 0.
 
 Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscode`, `gemini`, `windsurf`, `codex`.
 
 ### `remove`
 
-`github-fetcher remove` deletes the entry again. Without flags it offers only clients whose configuration already contains the entry, all preselected; `--client id,id` and `--all` skip the menu, and `--name` selects which entry to remove. A bare `remove` needs an interactive terminal for that menu and exits 2 when stdin is not a TTY; pass `--client` or `--all` to run unattended.
+`github-fetcher remove` deletes the entry again. Without flags it opens a clack selection prompt listing only clients whose configuration already contains the entry, all preselected; prompts go to stderr and keyboard controls come from clack. `--client id,id` and `--all` skip the prompt, and `--name` selects which entry to remove. A bare `remove` needs an interactive terminal for that prompt and exits 2 when stdin is not a TTY; pass `--client` or `--all` to run unattended.
 
 - Only existing entries are touched: a client with no configuration reports `not-installed`, a client whose configuration lacks the entry reports `skipped`, and neither file is rewritten. A key that belongs to another server is never removed; it reports `skipped` with a message.
 - The current file is backed up before the removal is written, with the same `<path>.bak.<timestamp>` naming as `init`.

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { backupFile } from "../../src/cli/clients-flow.js";
 import { runRemove } from "../../src/cli/remove.js";
-import type { TuiItem } from "../../src/cli/tui.js";
+import type { RemoveItem } from "../../src/cli/remove.js";
 
 const dirs: string[] = [];
 
@@ -578,7 +578,7 @@ describe("runRemove", () => {
     const codexPath = join(home, ".codex", "config.toml");
     await mkdir(dirname(codexPath), { recursive: true });
     await writeFile(codexPath, 'model = "gpt"\n\n[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "@kurvcygnus/github-fetcher@latest"]\n', "utf8");
-    const seen: { items: readonly TuiItem[]; preselected: readonly string[] } = { items: [], preselected: [] };
+    const seen: { items: readonly RemoveItem[]; preselected: readonly string[] } = { items: [], preselected: [] };
     const out = capture();
 
     const code = await runRemove(

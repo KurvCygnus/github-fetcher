@@ -8,6 +8,7 @@ import { PACKAGE_COMMAND, getAdapter } from "../../src/cli/clients/index.js";
 import type { ClientAdapter } from "../../src/cli/clients/index.js";
 import { daemonTokenPath } from "../../src/daemon/paths.js";
 import { runInit } from "../../src/cli/init.js";
+import type { PromptAdapter } from "../../src/cli/prompts.js";
 
 const dirs: string[] = [];
 const TOKEN = "dummy-init-token";
@@ -29,6 +30,67 @@ function capture(): { stream: NodeJS.WritableStream; text: () => string } {
     } as NodeJS.WritableStream,
     text: () => chunks.join(""),
   };
+}
+
+type RecordedCall =
+  | { name: "intro" | "outro"; message: string }
+  | { name: "note"; message: string; title?: string }
+  | { name: "multiselect"; options: Parameters<PromptAdapter["multiselect"]>[0] }
+  | { name: "select"; options: Parameters<PromptAdapter["select"]>[0] }
+  | { name: "confirm"; options: Parameters<PromptAdapter["confirm"]>[0] }
+  | { name: "spinner"; message: string };
+
+interface RecordingPrompts extends PromptAdapter {
+  calls: RecordedCall[];
+}
+
+interface PromptAnswers {
+  clients?: string[];
+  transport?: string;
+  confirmed?: boolean;
+  cancelled?: boolean;
+}
+
+function recordingPrompts(answers: PromptAnswers = {}): RecordingPrompts {
+  const calls: RecordedCall[] = [];
+  return {
+    calls,
+    intro(message: string): void {
+      calls.push({ name: "intro", message });
+    },
+    outro(message: string): void {
+      calls.push({ name: "outro", message });
+    },
+    note(message: string, title?: string): void {
+      calls.push(title === undefined ? { name: "note", message } : { name: "note", message, title });
+    },
+    async multiselect<T>(options: Parameters<PromptAdapter["multiselect"]>[0]): Promise<readonly T[] | null> {
+      calls.push({ name: "multiselect", options });
+      return answers.cancelled === true ? null : ((answers.clients ?? ["opencode"]) as unknown as T[]);
+    },
+    async select<T>(options: Parameters<PromptAdapter["select"]>[0]): Promise<T | null> {
+      calls.push({ name: "select", options });
+      return (answers.transport ?? "stdio") as unknown as T;
+    },
+    async confirm(options) {
+      calls.push({ name: "confirm", options });
+      return answers.confirmed ?? true;
+    },
+    async spinner<T>(message: string, work: () => Promise<T>): Promise<T> {
+      calls.push({ name: "spinner", message });
+      return work();
+    },
+  };
+}
+
+function callAt(calls: RecordedCall[], index: number, name: "multiselect"): Extract<RecordedCall, { name: "multiselect" }>;
+function callAt(calls: RecordedCall[], index: number, name: "select"): Extract<RecordedCall, { name: "select" }>;
+function callAt(calls: RecordedCall[], index: number, name: "confirm"): Extract<RecordedCall, { name: "confirm" }>;
+function callAt(calls: RecordedCall[], index: number, name: "note"): Extract<RecordedCall, { name: "note" }>;
+function callAt(calls: RecordedCall[], index: number, name: RecordedCall["name"]): RecordedCall {
+  const call = calls[index];
+  if (call === undefined || call.name !== name) throw new Error(`expected ${name} at call ${index}`);
+  return call;
 }
 
 let previousToken: string | undefined;
@@ -265,10 +327,11 @@ describe("runInit", () => {
     expect(sweptEntries.every((entry: { action: string }) => entry.action === "not-installed")).toBe(true);
   }, 300000);
 
-  it("a cancelled TUI performs no writes and reports cancelled", async () => {
+  it("a cancelled wizard performs no writes and reports cancelled", async () => {
     const home = await tempDir("ghf-init-home-");
     const cwd = await tempDir("ghf-init-cwd-");
     const out = capture();
+    const prompts = recordingPrompts({ cancelled: true });
     const code = await runInit(
       { name: "github", dryRun: false },
       {
@@ -277,7 +340,7 @@ describe("runInit", () => {
         home,
         cwd,
         interactive: true,
-        select: async () => null,
+        prompts,
       },
     );
 
@@ -285,6 +348,65 @@ describe("runInit", () => {
     expect(JSON.parse(out.text())).toEqual([{ action: "cancelled" }]);
     expect(existsSync(join(home, ".config", "opencode"))).toBe(false);
     expect(existsSync(join(home, ".cursor"))).toBe(false);
+  }, 300000);
+
+  it("runs the eight-call wizard and writes the selected clients", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const configPath = join(home, ".config", "opencode", "opencode.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ mcp: { existing: { type: "local", command: ["x"] } } }, null, 2), "utf8");
+
+    const out = capture();
+    const err = capture();
+    const prompts = recordingPrompts();
+    const code = await runInit(
+      { name: "github", dryRun: false },
+      { stdout: out.stream, stderr: err.stream, home, cwd, interactive: true, prompts },
+    );
+
+    expect(code).toBe(0);
+    expect(prompts.calls.map((call) => call.name)).toEqual([
+      "intro",
+      "multiselect",
+      "select",
+      "note",
+      "confirm",
+      "spinner",
+      "note",
+      "outro",
+    ]);
+    const multi = callAt(prompts.calls, 1, "multiselect");
+    expect(multi.options.options.some((option) => option.hint === "(detected)")).toBe(true);
+    const transport = callAt(prompts.calls, 2, "select");
+    expect(transport.options.options.map((option) => option.value)).toEqual(["stdio", "http"]);
+    const preview = callAt(prompts.calls, 3, "note");
+    expect(preview.title).toBe("config paths");
+    expect(preview.message).toContain("github");
+    const confirm = callAt(prompts.calls, 4, "confirm");
+    expect(confirm.options.initialValue).toBe(true);
+
+    const entries = JSON.parse(out.text());
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ client: "opencode", action: "created" });
+    expect(JSON.parse(await readFile(configPath, "utf8")).mcp.github).toBeDefined();
+    expect(err.text()).toContain("auth: token");
+  }, 300000);
+
+  it("a flag-driven init never calls a prompt method", async () => {
+    const home = await tempDir("ghf-init-home-");
+    const cwd = await tempDir("ghf-init-cwd-");
+    const prompts = recordingPrompts();
+    const out = capture();
+    const code = await runInit(
+      ["--client", "opencode", "--all", "--dry-run"],
+      { stdout: out.stream, stderr: capture().stream, home, cwd, interactive: true, prompts },
+    );
+
+    expect(code).toBe(0);
+    expect(prompts.calls).toEqual([]);
+    expect(Array.isArray(JSON.parse(out.text()))).toBe(true);
   }, 300000);
 
   it("--help prints usage to stdout and exits 0", async () => {
