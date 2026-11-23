@@ -98,7 +98,7 @@ try {
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const list = await request(2, "tools/list", {});
   const tools = list.result?.tools ?? [];
-  if (tools.length !== 41) throw new Error(`expected 41 tools, got ${tools.length}`);
+  if (tools.length !== 42) throw new Error(`expected 42 tools, got ${tools.length}`);
   const names = new Set(tools.map((tool) => tool.name));
   for (const required of ["github_rate_limit", "github_repo", "github_file", "github_search_code", "github_commit", "github_api_get"]) {
     if (!names.has(required)) throw new Error(`missing tool ${required}`);
@@ -197,7 +197,7 @@ try {
   if (!listResponse.ok) throw new Error(`HTTP tools/list failed: ${listResponse.status}`);
   const listBody = await listResponse.json();
   const httpTools = listBody.result?.tools ?? [];
-  if (httpTools.length !== 41) throw new Error(`HTTP tools/list expected 41 tools, got ${httpTools.length}`);
+  if (httpTools.length !== 42) throw new Error(`HTTP tools/list expected 42 tools, got ${httpTools.length}`);
 
   const stopResponse = await fetch(`${base}/daemon/stop`, {
     method: "POST",

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - Unreleased
+
+### Added
+
+- `github_labels` lists repository labels with their name, color, description, and optional upstream issue counts; `with_counts: true` copies `open_issues_count` and `closed_issues_count` from the upstream response when present and emits `null` otherwise, in a single client call. The tool count is 42.
+
 ## [0.6.1] - 2026-11-23
 
 ### Added

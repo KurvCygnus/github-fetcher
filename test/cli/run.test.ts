@@ -247,6 +247,37 @@ describe("runCli", () => {
     expect(out.text()).toBe("");
   });
 
+  it("runs the labels subcommand end to end with --with-counts", async () => {
+    const out = capture();
+    const err = capture();
+    const api = vi.fn(async (_url: string) => ({
+      data: [{ name: "bug", color: "f00", description: null, open_issues_count: 4, closed_issues_count: 9 }],
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+      cache: { state: "miss" },
+    }));
+    const labelsCtx: ToolContext = {
+      ...ctx,
+      client: { api, apiRaw: vi.fn(), raw: vi.fn() } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["labels", "o/r", "--with-counts"], {
+      createRuntime: async () => labelsCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(api.mock.calls[0]?.[0]).toBe("/repos/o/r/labels?page=1&per_page=30");
+    expect(JSON.parse(out.text())).toMatchObject({
+      repo: "o/r",
+      items: [{ name: "bug", open_issues_count: 4, closed_issues_count: 9 }],
+      page: 1,
+      per_page: 30,
+      meta: { cache: "miss", calls: 1 },
+    });
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();

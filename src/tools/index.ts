@@ -16,6 +16,7 @@ import { fileTool } from "./file.js";
 import { healthTool } from "./health.js";
 import { issueTool, issuesTool } from "./issues.js";
 import { languagesTool } from "./languages.js";
+import { labelsTool } from "./labels.js";
 import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
 import { readmeTool } from "./readme.js";
@@ -41,6 +42,7 @@ export const tools: readonly ToolDefinition[] = [
   commitsTool,
   commitTool,
   branchesTool,
+  labelsTool,
   issueTool,
   issuesTool,
   prTool,

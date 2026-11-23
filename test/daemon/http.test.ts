@@ -169,10 +169,10 @@ describe("daemon http (loopback integration)", () => {
     expect(malformed.status).toBe(400);
   });
 
-  it("lists all 41 tools on an initialized session", async () => {
+  it("lists all 42 tools on an initialized session", async () => {
     sessionA = await openSession("token-a");
     const body = await initializeThenList(sessionA);
-    expect(body.result?.tools).toHaveLength(41);
+    expect(body.result?.tools).toHaveLength(42);
     const names = body.result?.tools.map((tool) => tool.name) ?? [];
     expect(names).toContain("github_commit");
     expect(names).toContain("github_file_grep");

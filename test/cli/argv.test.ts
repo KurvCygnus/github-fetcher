@@ -98,6 +98,16 @@ describe("parseArgs", () => {
     expect(() => parseArgs(SUBCOMMANDS["compare-repos"], [])).toThrow(CliUsageError);
   });
 
+  it("parses the labels subcommand into its five input keys", () => {
+    expect(parseArgs(SUBCOMMANDS.labels, ["o/r", "--page", "2", "--per-page", "5", "--with-counts", "--fresh"]).input).toEqual({
+      repo: "o/r",
+      page: 2,
+      per_page: 5,
+      with_counts: true,
+      fresh: true,
+    });
+  });
+
   it("covers all registered tools", () => {
     expect(Object.keys(SUBCOMMANDS)).toHaveLength(tools.length);
   });
