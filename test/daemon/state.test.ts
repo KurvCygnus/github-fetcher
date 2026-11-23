@@ -33,7 +33,7 @@ const sample: DaemonState = {
   port: 39117,
   token: "s3cr3t",
   startedAt: "2026-11-22T00:00:00.000Z",
-  version: "0.6.1",
+  version: "0.7.0",
 };
 
 describe("daemon state files", () => {
