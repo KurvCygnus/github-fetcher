@@ -553,7 +553,7 @@ describe("runRemove", () => {
     expect(JSON.parse(await readFile(opencodePath, "utf8")).mcp.github).toBeUndefined();
   }, 300000);
 
-  it("TUI lists only adapters that already contain the entry and removes them", async () => {
+  it("wizard lists only adapters that already contain the entry and removes them", async () => {
     const home = await tempDir("ghf-remove-home-");
     const cwd = await tempDir("ghf-remove-cwd-");
     const opencodePath = join(home, ".config", "opencode", "opencode.json");
@@ -608,7 +608,7 @@ describe("runRemove", () => {
     expect(await readFile(codexPath, "utf8")).not.toContain("[mcp_servers.github]");
   }, 300000);
 
-  it("prints [] without starting the TUI when no adapter contains the entry", async () => {
+  it("prints [] without starting the wizard when no adapter contains the entry", async () => {
     const home = await tempDir("ghf-remove-home-");
     const cwd = await tempDir("ghf-remove-cwd-");
     let called = false;
@@ -634,7 +634,7 @@ describe("runRemove", () => {
     expect(out.text()).toBe("[]\n");
   }, 300000);
 
-  it("a cancelled TUI performs no writes and reports cancelled", async () => {
+  it("a cancelled wizard performs no writes and reports cancelled", async () => {
     const home = await tempDir("ghf-remove-home-");
     const cwd = await tempDir("ghf-remove-cwd-");
     const configPath = join(home, ".config", "opencode", "opencode.json");

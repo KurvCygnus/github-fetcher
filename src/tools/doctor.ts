@@ -93,7 +93,7 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
     name: "github_doctor",
     title: "GitHub health check",
     description:
-      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with reachability derived from the doctor's own API probe, local cache state, current quota, and pinned_repos listing this session's pinned repositories. Costs 1 core call. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, pinned_repos, meta{cache}}.",
+      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with reachability derived from the doctor's own API probe, local cache state, current quota, and pinned_repos listing this session's pinned repositories. Costs 1 core call, or 2 with opt-in identity. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, pinned_repos, meta{cache}}.",
     inputSchema: {},
     annotations: {
       readOnlyHint: true,

@@ -98,7 +98,7 @@ export function usageFor(subcommand: string | undefined): string {
       const shape = argShape(entry);
       return `  ${name.padEnd(15)} ${entry.tool}${shape === "" ? "" : `  ${shape}`}`;
     }),
-    `  ${"init".padEnd(15)} configure MCP clients interactively (TUI; --client/--all/--dry-run)`,
+    `  ${"init".padEnd(15)} configure MCP clients interactively (wizard; --client/--all/--dry-run)`,
     `  ${"remove".padEnd(15)} remove the github entry from configured clients.`,
     `  ${"serve --daemon".padEnd(15)} run the MCP loopback HTTP listener in this process`,
     `  ${"daemon".padEnd(15)} start|stop|status - manage the resident HTTP daemon`,

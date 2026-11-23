@@ -232,6 +232,21 @@ describe("runCli", () => {
     });
   });
 
+  it("default-denies the api escape hatch when --ihaveto is omitted", async () => {
+    const out = capture();
+    const err = capture();
+    const code = await runCli(["api", "/repos/o/r"], {
+      createRuntime: async () => ctx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(2);
+    const envelope = JSON.parse(err.text()) as { error: { code: string; hint?: string | undefined } };
+    expect(envelope.error.code).toBe("invalid_params");
+    expect(envelope.error.hint).toContain("github_capabilities");
+    expect(out.text()).toBe("");
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();

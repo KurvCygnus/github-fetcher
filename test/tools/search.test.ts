@@ -335,7 +335,7 @@ describe("github_search_issues", () => {
     ]);
     const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
     const result = await searchIssuesTool.handler(
-      { query: 'repo:facebook/react is:issue label:"Type: Regression" state:open', sort: "created", order: "desc", page: 1, per_page: 5 },
+      { query: 'repo:facebook/react label:"Type: Regression" state:open', sort: "created", order: "desc", page: 1, per_page: 5 },
       ctx,
     );
     expect(client.api).toHaveBeenCalledWith(
@@ -363,6 +363,38 @@ describe("github_search_issues", () => {
     await expect(searchIssuesTool.handler({ query: "repo:facebook/react", sort: "reactions" }, ctx)).rejects.toMatchObject({
       code: "invalid_params",
       hint: expect.stringContaining("sort: reactions"),
+    });
+    expect(client.api).not.toHaveBeenCalled();
+  });
+
+  //? The repo branch builds its REST query only from parsed repo/state/label
+  //* qualifiers, so any leftover token would be silently discarded and the
+  //* caller would believe a text filter was applied. Both cases must reject.
+  const unsupportedHint =
+    "Repo-scoped issue search supports only repo:, state:, and label: qualifiers plus sort/order/page/per_page. Remove free text and other qualifiers, or drop repo: to use full-text search.";
+
+  it("repo-scoped issue search rejects free-text terms with a self-correcting hint", async () => {
+    const client = clientWith({});
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await expect(
+      searchIssuesTool.handler({ query: 'repo:facebook/react "login bug"' }, ctx),
+    ).rejects.toMatchObject({
+      code: "invalid_params",
+      message: "Unsupported terms in a repo-scoped issue query.",
+      details: { hint: unsupportedHint },
+    });
+    expect(client.api).not.toHaveBeenCalled();
+  });
+
+  it("repo-scoped issue search rejects other qualifiers with a self-correcting hint", async () => {
+    const client = clientWith({});
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await expect(
+      searchIssuesTool.handler({ query: "repo:facebook/react is:pr" }, ctx),
+    ).rejects.toMatchObject({
+      code: "invalid_params",
+      message: "Unsupported terms in a repo-scoped issue query.",
+      details: { hint: unsupportedHint },
     });
     expect(client.api).not.toHaveBeenCalled();
   });

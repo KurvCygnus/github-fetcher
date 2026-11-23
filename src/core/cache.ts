@@ -229,7 +229,7 @@ function diskStore(
       const cutoff = now() - 7 * 24 * 60 * 60 * 1000;
       const files: Array<{ name: string; mtime: number }> = [];
       for (const name of names) {
-        if (!name.endsWith(".json")) continue;
+        if (!name.endsWith(".json") && !name.endsWith(".tmp")) continue;
         try {
           const info = await stat(join(dir, name));
           if (info.mtimeMs < cutoff) await rm(join(dir, name), { force: true });

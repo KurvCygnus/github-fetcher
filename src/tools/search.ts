@@ -214,7 +214,7 @@ export const searchIssuesTool = defineTool({
   name: "github_search_issues",
   title: "GitHub issue and pull request search",
   description:
-    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name; the repo:, path:, state:, and label: qualifiers are parsed from query. A repo: query reads the repository issues endpoint with total_count null and repo_scoped true, filtering pull requests into filtered_count; sort: reactions is unsupported on that path. For per-repository aggregate counts, use github_repo_health. Returns {total_count, incomplete_results, items[{repo, number, title, state, type, author, created_at, updated_at, html_url}], page, per_page, has_more, next_page, repo_scoped, filtered_count}.",
+    "Search issues and pull requests with GitHub search syntax, such as is:issue, is:pr, state:open, or repo:owner/name; the repo:, path:, state:, and label: qualifiers are parsed from query. A repo: query reads the repository issues endpoint with total_count null and repo_scoped true, filtering pull requests into filtered_count; sort: reactions is unsupported on that path. Free text and other qualifiers are rejected for repo: queries. For per-repository aggregate counts, use github_repo_health. Returns {total_count, incomplete_results, items[{repo, number, title, state, type, author, created_at, updated_at, html_url}], page, per_page, has_more, next_page, repo_scoped, filtered_count}.",
   inputSchema: {
     query: z.string().describe("GitHub issue search query"),
     sort: z.enum(["comments", "reactions", "created", "updated"]).optional().describe("Sort field: comments, reactions, created, or updated"),
@@ -243,6 +243,20 @@ export const searchIssuesTool = defineTool({
         });
         //* Direct callers read the rejection reason off error.hint without the
         //* MCP toResult() unwrapping that lifts details.hint into the envelope.
+        Object.assign(error, { hint: error.message });
+        throw error;
+      }
+      //* The REST query carries only parsed repo/state/label qualifiers, so any
+      //* leftover token would be dropped silently: the caller would believe a
+      //* text filter or extra qualifier was applied when it never was. Reject
+      //* instead with guidance that points at the supported qualifier set.
+      if (qualifiers.remainder.trim() !== "") {
+        const error = new GithubError("invalid_params", "Unsupported terms in a repo-scoped issue query.", {
+          hint: "Repo-scoped issue search supports only repo:, state:, and label: qualifiers plus sort/order/page/per_page. Remove free text and other qualifiers, or drop repo: to use full-text search.",
+        });
+        //* Mirror the top-level hint for direct callers, matching the sort guard:
+        //* toResult() unfolds details.hint into the MCP envelope, while a direct
+        //* handler caller reads error.hint without that unwrapping step.
         Object.assign(error, { hint: error.message });
         throw error;
       }

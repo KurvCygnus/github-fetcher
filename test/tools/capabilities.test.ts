@@ -220,6 +220,7 @@ describe("github_capabilities", () => {
     const issues = CAPABILITY_GROUPS.github_search_issues!.summary;
     expect(issues).toContain("null total");
     expect(issues).toContain("repo_scoped");
+    expect(issues).toContain("unsupported terms rejected");
     const code = CAPABILITY_GROUPS.github_search_code!.summary;
     expect(code).toContain("qualifiers canonicalized");
     expect(code).toContain("index lags fresh pushes");

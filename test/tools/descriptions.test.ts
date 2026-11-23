@@ -176,10 +176,17 @@ describe("tool descriptions", () => {
     );
     expect(issues.description).toContain("created_at");
     expect(issues.description).toContain("total_count null");
+    expect(issues.description).toContain("Free text and other qualifiers are rejected for repo: queries");
 
     const code = allTools.find((tool) => tool.name === "github_search_code")!;
     expect(code.description).toContain("repo: and path: qualifiers are parsed from query");
     expect(code.description).toContain("index lags fresh pushes");
     expect(code.description).toContain("cross-check with github_file_grep or github_file");
+  });
+
+  it("states the doctor call cost with opt-in identity", () => {
+    const doctor = allTools.find((tool) => tool.name === "github_doctor")!;
+    expect(doctor.description).toContain("Costs 1 core call, or 2 with opt-in identity.");
+    expect(doctor.description).not.toContain("Costs 1 core call.");
   });
 });

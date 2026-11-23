@@ -67,7 +67,7 @@ export interface RemoveDeps {
   cwd?: string | undefined;
   interactive?: boolean | undefined;
   input?: NodeJS.ReadStream | undefined;
-  //? Injection seam for the TUI: tests exercise cancel/confirm without a real terminal.
+  //? Injection seam for the wizard: tests exercise cancel/confirm without a real terminal.
   select?: SelectFn | undefined;
 }
 
@@ -231,7 +231,7 @@ export async function runRemove(arg: RemoveOptions | string[], deps: RemoveDeps)
   } else if (interactive) {
     const matches = ADAPTERS.filter((adapter) => targetContainsEntry(adapter, target));
     if (matches.length === 0) {
-      //* Nothing to offer: the empty array is the complete answer, so the TUI never starts.
+      //* Nothing to offer: the empty array is the complete answer, so the wizard never starts.
       deps.stdout.write("[]\n");
       return 0;
     }

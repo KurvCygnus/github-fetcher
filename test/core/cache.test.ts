@@ -141,6 +141,17 @@ describe("createCacheStore", () => {
     await store.prune();
     await expect(readdir(dir)).resolves.toEqual([]);
   });
+
+  it("prunes orphaned .tmp files left by a crashed rename retry", async () => {
+    const dir = await tempDir();
+    const store = createCacheStore({ mode: "disk", dir });
+    const orphan = `${cacheKey(entry.url, "token-a")}.json.deadbeef.tmp`;
+    await writeFile(join(dir, orphan), "{\"ok\":true}", "utf8");
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await utimes(join(dir, orphan), old, old);
+    await store.prune();
+    await expect(readdir(dir)).resolves.toEqual([]);
+  });
 });
 
 describe("disk store rename retries", () => {
