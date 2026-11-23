@@ -149,4 +149,18 @@ describe("tool descriptions", () => {
       Object.keys(output).sort(),
     );
   });
+
+  it("documents the repo-scoped issue contract and keeps the code index-lag warning", () => {
+    const issues = allTools.find((tool) => tool.name === "github_search_issues")!;
+    expect(declaredFields(issues.description), issues.name).toEqual(
+      expect.arrayContaining(["total_count", "repo_scoped", "filtered_count"]),
+    );
+    expect(issues.description).toContain("created_at");
+    expect(issues.description).toContain("total_count null");
+
+    const code = allTools.find((tool) => tool.name === "github_search_code")!;
+    expect(code.description).toContain("repo: and path: qualifiers are parsed from query");
+    expect(code.description).toContain("index lags fresh pushes");
+    expect(code.description).toContain("cross-check with github_file_grep or github_file");
+  });
 });

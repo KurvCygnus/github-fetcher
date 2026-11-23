@@ -184,4 +184,13 @@ describe("github_capabilities", () => {
       message: expect.stringContaining("valid groups:"),
     });
   });
+
+  it("surfaces the repo-scoped search contract in the static summaries", () => {
+    const issues = CAPABILITY_GROUPS.github_search_issues!.summary;
+    expect(issues).toContain("null total");
+    expect(issues).toContain("repo_scoped");
+    const code = CAPABILITY_GROUPS.github_search_code!.summary;
+    expect(code).toContain("qualifiers canonicalized");
+    expect(code).toContain("index lags fresh pushes");
+  });
 });

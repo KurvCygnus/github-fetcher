@@ -232,10 +232,38 @@ describe("github_search_code", () => {
       ),
     ).rejects.toMatchObject({ code: "auth_missing" });
   });
+
+  it("keeps non-repo code query tokens in their original order", async () => {
+    const client = clientWith({ total_count: 0, incomplete_results: false, items: [] });
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await searchCodeTool.handler({ query: "label:bug hello" }, ctx);
+    expect(client.api).toHaveBeenCalledWith(
+      "/search/code?q=label%3Abug+hello&page=1&per_page=20",
+      {
+        fresh: undefined,
+        cacheTtlMs: 300_000,
+        accept: "application/vnd.github.text-match+json",
+      },
+    );
+  });
+
+  it("canonicalizes only repo:/path: and leaves state: in its original position", async () => {
+    const client = clientWith({ total_count: 0, incomplete_results: false, items: [] });
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await searchCodeTool.handler({ query: "path:src state:open repo:o/r hello" }, ctx);
+    expect(client.api).toHaveBeenCalledWith(
+      "/search/code?q=state%3Aopen+hello+repo%3Ao%2Fr+path%3Asrc&page=1&per_page=20",
+      {
+        fresh: undefined,
+        cacheTtlMs: 300_000,
+        accept: "application/vnd.github.text-match+json",
+      },
+    );
+  });
 });
 
 describe("github_search_issues", () => {
-  it("maps issue and pull request results", async () => {
+  it("keeps non-repo issue search on /search/issues with its original envelope", async () => {
     const client = clientWith({
       total_count: 1,
       incomplete_results: false,
@@ -245,6 +273,7 @@ describe("github_search_issues", () => {
           title: "Bug",
           state: "open",
           user: { login: "alice" },
+          created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
           html_url: "https://github.com/o/r/issues/3",
           repository_url: "https://api.github.com/repos/o/r",
@@ -252,10 +281,16 @@ describe("github_search_issues", () => {
       ],
     });
     const output = await searchIssuesTool.handler(
-      { query: "is:issue repo:o/r" },
+      { query: "is:issue" },
       { client, config: makeConfig(), authFingerprint: "abc" },
     );
+    expect(client.api).toHaveBeenCalledWith(
+      "/search/issues?q=is%3Aissue&page=1&per_page=20",
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
     expect(output).toMatchObject({
+      total_count: 1,
+      incomplete_results: false,
       items: [
         {
           repo: "o/r",
@@ -266,6 +301,68 @@ describe("github_search_issues", () => {
           author: "alice",
         },
       ],
+      page: 1,
+      per_page: 20,
+      has_more: false,
+      next_page: null,
     });
+  });
+
+  it("repo-scoped issue search uses the REST issues endpoint with an honest null total", async () => {
+    const client = clientWith([
+      {
+        number: 38322,
+        title: "Regression on render",
+        state: "open",
+        user: { login: "alice" },
+        created_at: "2026-10-01T00:00:00Z",
+        updated_at: "2026-10-02T00:00:00Z",
+        html_url: "https://github.com/facebook/react/issues/38322",
+        repository_url: "https://api.github.com/repos/facebook/react",
+      },
+      {
+        number: 38323,
+        title: "A pull request",
+        state: "open",
+        user: { login: "bob" },
+        created_at: "2026-10-03T00:00:00Z",
+        updated_at: "2026-10-04T00:00:00Z",
+        html_url: "https://github.com/facebook/react/pull/38323",
+        repository_url: "https://api.github.com/repos/facebook/react",
+        pull_request: { url: "https://api.github.com/repos/facebook/react/pulls/38323" },
+      },
+    ]);
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    const result = await searchIssuesTool.handler(
+      { query: 'repo:facebook/react is:issue label:"Type: Regression" state:open', sort: "created", order: "desc", page: 1, per_page: 5 },
+      ctx,
+    );
+    expect(client.api).toHaveBeenCalledWith(
+      "/repos/facebook/react/issues?state=open&labels=Type%3A+Regression&sort=created&direction=desc&page=1&per_page=5",
+      { fresh: undefined, cacheTtlMs: 300_000 },
+    );
+    expect(result).toMatchObject({
+      total_count: null,
+      incomplete_results: true,
+      repo_scoped: true,
+      filtered_count: 1,
+      has_more: false,
+      next_page: null,
+    });
+    expect(result.items).toEqual([expect.objectContaining({ number: 38322, created_at: "2026-10-01T00:00:00Z" })]);
+    //? Handlers return Record<string, unknown>, so the array is narrowed at the
+    //* assertion boundary using the same cast pattern as the other list suites.
+    const items = result.items as Array<{ pull_request?: unknown }>;
+    expect(items.some((item) => item.pull_request !== undefined)).toBe(false);
+  });
+
+  it("repo-scoped issue search rejects sort: reactions with a hint", async () => {
+    const client = clientWith({});
+    const ctx = { client, config: makeConfig(), authFingerprint: "abc" };
+    await expect(searchIssuesTool.handler({ query: "repo:facebook/react", sort: "reactions" }, ctx)).rejects.toMatchObject({
+      code: "invalid_params",
+      hint: expect.stringContaining("sort: reactions"),
+    });
+    expect(client.api).not.toHaveBeenCalled();
   });
 });
