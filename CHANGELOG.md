@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-11-23
+
+### Fixed
+
+- `github_batch_activity` now uses a 25-second per-repository timeout for its four to seven sequential core GETs and always returns a final `meta`; when every repository times out, `meta` is `{ cache: "miss", calls: totalCalls }` so the envelope stays honest.
+- Cached HTTP responses containing malformed JSON are evicted before the `upstream` error is raised, so a transient bad body cannot be replayed as a permanent cache hit.
+- `github_labels` documentation now states that GitHub's labels endpoint supplies no issue counts: `open_issues_count` and `closed_issues_count` stay `null` with `with_counts`, and no extra call is made.
+
 ## [0.7.0] - 2026-11-23
 
 ### Added

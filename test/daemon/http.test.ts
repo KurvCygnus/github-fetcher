@@ -63,7 +63,7 @@ describe("daemon http (loopback integration)", () => {
       env: {},
       token: TOKEN,
       port: 0,
-      version: "0.7.0",
+      version: "0.7.1",
       onStop: () => {
         stopCount += 1;
       },
@@ -144,7 +144,7 @@ describe("daemon http (loopback integration)", () => {
     expect(body.pid).toBe(process.pid);
     expect(body.port).toBeGreaterThan(0);
     expect(body.port).toBe(daemon.port);
-    expect(body.version).toBe("0.7.0");
+    expect(body.version).toBe("0.7.1");
     expect(body.sessionCount).toBe(0);
     expect(body.uptimeMs).toBeGreaterThanOrEqual(0);
   });
@@ -229,7 +229,7 @@ describe("daemon http session hygiene (loopback integration)", () => {
       env: {},
       token: TOKEN,
       port: 0,
-      version: "0.7.0",
+      version: "0.7.1",
       //* Count constructions so a rejected initialize cannot silently build a
       //* real server/transport pair and leave it untracked in the registry.
       createContext: async (env: NodeJS.ProcessEnv): Promise<ToolContext> => {
