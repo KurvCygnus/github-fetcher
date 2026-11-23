@@ -17,6 +17,14 @@ describe("CAPABILITY_GROUPS", () => {
     expect(listed).toEqual(registered);
   });
 
+  it("places github_labels in the Collaboration group", () => {
+    expect(CAPABILITY_GROUPS.github_labels!.group).toBe("Collaboration");
+  });
+
+  it("places github_release_diff in the Releases group", () => {
+    expect(CAPABILITY_GROUPS.github_release_diff!.group).toBe("Releases");
+  });
+
   it("gives every registered tool a non-empty signature", () => {
     for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
       expect(entry.signature.length, name).toBeGreaterThan(0);
