@@ -248,7 +248,7 @@ describe("runCli", () => {
         raw: vi.fn(),
       } as unknown as ToolContext["client"],
     };
-    const code = await runCli(["api", "/repos/o/r/readme", "--query", "ref=main,per_page=1"], {
+    const code = await runCli(["api", "/repos/o/r/readme", "--query", "ref=main,per_page=1", "--ihaveto"], {
       createRuntime: async () => apiCtx,
       stdout: out.stdout,
       stderr: err.stdout,

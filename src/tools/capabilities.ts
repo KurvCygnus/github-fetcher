@@ -14,14 +14,13 @@ export interface CapabilityInput {
   description: string;
 }
 
-//* Optionality is derived from `z.ZodOptional` alone: a field wrapped in
-//* `.default()` would report `optional: false` even though callers may omit it.
-//* No registered tool uses `.default()` today; if one appears, extend this
-//* derivation or the index misreports that input as required.
+//* Optionality covers both `z.ZodOptional` and `z.ZodDefault`: callers may omit
+//* either wrapper, so both must report `optional: true` or the index misreports
+//* what a tool requires. github_api_get's `ihaveto` uses `.default(false)`.
 export function capabilityInputs(shape: z.ZodRawShape): CapabilityInput[] {
   return Object.entries(shape).map(([name, field]) => ({
     name,
-    optional: field instanceof z.ZodOptional,
+    optional: field instanceof z.ZodOptional || field instanceof z.ZodDefault,
     //? ZodRawShape values are typed as core $ZodType, which omits the classic
     //? description getter; registered schemas are always classic instances.
     description: (field as z.ZodType).description ?? "",
@@ -34,7 +33,7 @@ export const CAPABILITY_GROUPS: Record<string, CapabilityEntry> = {
   github_capabilities: { group: "Meta", summary: "Task-grouped index of every tool; call this first when unsure which tool fits a job. Envelope: single object", signature: "group?" },
   github_rate_limit: { group: "Meta", summary: "Current quota per resource with reset times; call it when refused with 403/429. Envelope: single object", signature: "resource?, all?" },
   github_pin_ref: { group: "Meta", summary: "Pin a repository to a commit for the session: file, tree, grep, and batch reads without an explicit ref anchor to this sha and echo pinned_sha; expired on restart. Envelope: single object", signature: "repo, ref?, unpin?" },
-  github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?" },
+  github_api_get: { group: "Meta", summary: "Escape hatch for read-only REST GETs the dedicated tools do not cover; call github_capabilities first and pass ihaveto: true to acknowledge the last resort; host fixed to api.github.com. Envelope: {status, content_type, body}", signature: "path, query?, fresh?, ihaveto?" },
   github_doctor: { group: "Meta", summary: "One-screen health check: token presence, identity, proxy reachability from the doctor's own API probe, cache state, quota, and pinned_repos; call first when calls fail. Envelope: single object", signature: "none" },
   github_repo: { group: "Repository", summary: "Single repository metadata: description, visibility, stars, forks, license, default branch. Envelope: single object", signature: "repo, fresh?" },
   github_repos: { group: "Repository", summary: "Concurrent batch lookup of up to 20 repositories; per-item ok/error so one missing repo never rejects the call. Envelope: single object", signature: "repos, fresh?" },

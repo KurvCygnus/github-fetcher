@@ -180,14 +180,14 @@ Token 和 ref pin 是按会话隔离的: 每个 MCP 会话都有独立的凭据�
 ## 限制
 
 - 从构造上只读: 不支持写操作, GraphQL, clone 或 archive 工具.
-- 41 个工具, 不是完整的 GitHub API 客户端; 专用工具没覆盖的只读 REST 端点用 `github_api_get`.
+- 41 个工具, 不是完整的 GitHub API 客户端; 专用工具没覆盖的只读 REST 端点用 `github_api_get`, 并传 `ihaveto: true` 确认这是最后手段. 不带这个参数会被拒绝, 并提示先调用 `github_capabilities`.
 - 匿名访问每小时 60 次; 代码搜索需要 token.
 - 不内置代理; 请自备 HTTP(S) 代理.
 - 缓存会把响应体写到磁盘; 共享账号无法接受这一点时不要使用.
 
 ## 安全模型
 
-- 从构造上只读: 服务器只发出 GET 请求; 不支持 GraphQL 和写操作, `github_api_get` 接受任意只读 GET 路径, 主机固定为 api.github.com.
+- 从构造上只读: 服务器只发出 GET 请求; 不支持 GraphQL 和写操作, `github_api_get` 只有在传入 `ihaveto: true` 确认没有专用工具覆盖该端点后, 才接受任意只读 GET 路径, 主机固定为 api.github.com.
 - 只会联系两个主机: API 请求只到 `api.github.com`, raw 字节只来自 `raw.githubusercontent.com`.
 - 重定向被限制在 GitHub origin 之内: 离开原主机的重定向会被拒绝.
 - Token 只出现在 Authorization 头里, 绝不进入日志, 错误信息, 工具输出或缓存; 缓存键使用 token 的 SHA-256 哈希.
@@ -224,7 +224,7 @@ Token 和 ref pin 是按会话隔离的: 每个 MCP 会话都有独立的凭据�
 
 Agent 会通过 `tools/list` 拿到每个工具的完整输入 schema; `github_capabilities` 的每行还带从同一 schema 派生的输入行 (名字, 可选性, 说明), 索引与 schema 不会漂移. 分组与 `github_capabilities` 返回的索引一致.
 
-- Meta: `github_capabilities` (一行摘要带 `Envelope:` 标签, 外加每个工具派生的 `input` 行与输入签名; `group` 可把索引过滤到单个分组), `github_rate_limit` (默认只投影 core 和 search; `all: true` 展开全部资源桶; 通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET; `path` 可带查询串, `query` 接受标量值; `pagination` 携带 Link 头的翻页 URL; 不支持 GraphQL), `github_doctor` (一屏自检: token 是否存在, 可选的身份输出, 由自身 API 探测得出的代理可达性, 缓存状态, 配额和当前会话的 `pinned_repos`), `github_pin_ref` (把仓库 pin 到一个 commit sha 直到会话结束: 不带显式 `ref` 的文件, 目录树, grep 和批量读取会锚定到这个 pin 并回显 `pinned_sha`; pin 保存在服务器内存里, 重启即丢失)
+- Meta: `github_capabilities` (一行摘要带 `Envelope:` 标签, 外加每个工具派生的 `input` 行与输入签名; `group` 可把索引过滤到单个分组), `github_rate_limit` (默认只投影 core 和 search; `all: true` 展开全部资源桶; 通过 `GITHUB_MCP_EXPOSE_IDENTITY` 显式开启身份输出), `github_api_get` (对 api.github.com 的任意只读 GET, 必须传 `ihaveto: true` 确认没有专用工具覆盖该端点, 否则会被拒绝; `path` 可带查询串, `query` 接受标量值; `pagination` 携带 Link 头的翻页 URL; 不支持 GraphQL), `github_doctor` (一屏自检: token 是否存在, 可选的身份输出, 由自身 API 探测得出的代理可达性, 缓存状态, 配额和当前会话的 `pinned_repos`), `github_pin_ref` (把仓库 pin 到一个 commit sha 直到会话结束: 不带显式 `ref` 的文件, 目录树, grep 和批量读取会锚定到这个 pin 并回显 `pinned_sha`; pin 保存在服务器内存里, 重启即丢失)
 - Repository: `github_repo` (报告 `visibility`), `github_repos` (一次并发批量查询最多 20 个仓库, 每项独立报告 ok 或 error), `github_compare_refs` (ahead/behind 计数, 总 commit 数, `total_files` 报告完整 diff 规模, 前 100 个变更文件, patch 截断到 4000 字符并逐文件标记 `patch_truncated`), `github_branches`, `github_languages` (按语言统计字节数, 降序排列), `github_contributors` (login, 账号类型和贡献次数), `github_repo_activity` (窗口期内的 pull, issue, commit, 活跃贡献者和 release 计数, 只消耗 core 配额, 附截断标记), `github_stargazers` (stargazer 列表附 `starred_at` 时间, 经 star+json media type 获取; 分页按时间升序, 连续翻页即构成 star 时间线)
 - User: `github_user` (单个用户主页: name, type, bio, company, location, blog 和粉丝数), `github_user_repos` (用户的仓库列表, 采用含 `created_at` 的统一投影字段; `type` 默认为 `owner`; 默认丢弃 fork, `include_forks: true` 保留; `min_stars` 设定 star 下限; 所有模式都聚合最多 10 页, 每页 100 条, 先对整体窗口过滤再分页, 因此请求的页是满的, 最多消耗 10 次 core 调用; `sort: created|updated|pushed|full_name` 保留上游排序, `sort: stars` 在客户端降序排列且忽略 order, 达到上限时报告 `gather_truncated`), `github_user_starred` (用户 star 过的仓库, 附 `starred_at` 时间), `github_user_events` (仅公开事件; 90 天或 300 条事件上限触发的 422 会转为带 hint 的 invalid_params 错误), `github_user_health` (一次调用完成用户体检: 原创与 fork 的占比和 `fork_share`, star 总数, star 数最高的仓库, 语言分布, 以及 90 天内的 push 活跃度; 消耗 2-11 次 core 调用; 除声明 `include_forks: true` 外, 明细指标不含 fork)
 - Files: `github_tree` (读取原始响应字节并按 `max_bytes` 本地截断, 默认 2 MiB, 提示中给出 `max_bytes`; `path_prefix` 和 `glob` 在 `max_entries` 之前过滤条目, 默认 1000; 报告 `total_entries`, 类型 `summary`, 本地截断或上游截断都标记 `truncated`, `api_truncated` 只表示上游信号; `glob` 含 `/` 或 `**` 时隐含递归, 除非显式 `recursive: false`, 递归列目录超时会降级为顶层条目并标记 `degraded: true`; `summary_only: true` 省略 `entries`, 改为返回整棵树的 `total_bytes` 和 `top_dirs`), `github_file` (支持从 1 开始的 `start_line`/`end_line` 行区间, 以及单次调用的 `max_bytes` 预算), `github_readme` (经 GitHub 的 readme 端点取仓库 README, 自动解析默认命名变体; 需要特定路径时用 `github_file`), `github_file_grep` (在单个文件里做正则搜索, 报告从 1 开始的行号与列号, `context_lines` 默认 2, `max_matches` 默认 50 并用 `matches_truncated` 报告截断; 缓存优先, 缓存温热时零上游调用; 匹配在工作线程中运行, 时间预算 2000 毫秒 (`GITHUB_MCP_GREP_TIMEOUT_MS`); 超时会降级为 `matches_truncated`, 不再阻塞会话; 二进制或非 UTF-8 文件会被拒绝), `github_files` (一次批量读取同一仓库的最多 10 个路径, 每个未命中缓存的路径消耗一次 core 调用, 按项报告 ok 或 error, 单个缺失路径不会拒绝整次调用; 可选 `max_bytes` 只截断解码后的文本, 二进制行保持不变); `github_file` 和 `github_tree` 的 404 错误会附带恢复 `hint` — ref 级未命中提示检查分支或 tag 名, 路径级未命中列出缓存中的同级条目名 — 全部来自本地缓存, 不产生额外上游调用

@@ -5,11 +5,14 @@ import { responseMeta } from "./meta.js";
 import { linkFor } from "./pagination.js";
 import { truncateText } from "./util.js";
 
+const GUARD_MESSAGE = "github_api_get is the last-resort escape hatch for endpoints no dedicated tool covers.";
+const GUARD_HINT = "Call github_capabilities() first and use a dedicated tool when one exists. If it truly does not, pass ihaveto: true.";
+
 export const apiGetTool = defineTool({
   name: "github_api_get",
   title: "GitHub API GET",
   description:
-    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. The host is fixed to api.github.com; GraphQL and writes are not supported. Returns {status, content_type, body, truncated, pagination, meta?}.",
+    "Escape hatch for read-only GitHub REST GET requests that the dedicated tools do not cover. Call github_capabilities first; this tool rejects unless ihaveto: true explicitly acknowledges that no dedicated tool covers the endpoint. The host is fixed to api.github.com; GraphQL and writes are not supported. Returns {status, content_type, body, truncated, pagination, meta?}.",
   inputSchema: {
     path: z.string().describe("Absolute API path, for example /repos/owner/name/readme"),
     query: z
@@ -17,6 +20,7 @@ export const apiGetTool = defineTool({
       .optional()
       .describe("Query parameters; entries override pairs already present in path"),
     fresh: z.boolean().optional().describe("Bypass the local cache"),
+    ihaveto: z.boolean().default(false).describe("Explicit acknowledgement that no dedicated tool covers this endpoint"),
   },
   annotations: {
     readOnlyHint: true,
@@ -25,6 +29,15 @@ export const apiGetTool = defineTool({
     openWorldHint: true,
   },
   async handler(input, ctx) {
+    if (input.ihaveto !== true) {
+      const error = new GithubError("invalid_params", GUARD_MESSAGE, { hint: GUARD_HINT });
+      //? Direct handler callers bypass the MCP/CLI Zod parse that applies the schema
+      //? default, so an omitted flag arrives as undefined; default-deny it as false.
+      //? The top-level mirror keeps the hint visible to direct callers while the
+      //? MCP envelope keeps reading the same text from details.
+      Object.assign(error, { hint: GUARD_HINT });
+      throw error;
+    }
     const separator = input.path.indexOf("?");
     const pathPart = separator === -1 ? input.path : input.path.slice(0, separator);
     const queryPart = separator === -1 ? null : input.path.slice(separator + 1);

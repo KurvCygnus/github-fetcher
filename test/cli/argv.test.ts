@@ -5,12 +5,14 @@ import { SUBCOMMANDS } from "../../src/cli/subcommands.js";
 import type { SubcommandSpec } from "../../src/cli/subcommands.js";
 import { tools } from "../../src/tools/index.js";
 
-//? Zod 4 wraps .optional() fields in a ZodOptional schema and instanceof cannot see through
-//? the wrapper, so a number flag whose schema is z.number().optional() would fail a bare
-//? ZodNumber check. Strip the wrapper first; this is the same optionality the signature
-//? guard in capabilities.test.ts derives its "?" marker from.
+//? Zod 4 wraps .optional() and .default() fields in wrapper schemas and instanceof cannot
+//? see through them, so a boolean flag whose schema is z.boolean().default(false) would fail
+//? a bare ZodBoolean check. Strip both wrappers; capabilities.test.ts derives its "?" marker
+//? from the same two wrapper classes.
 function bareType(field: z.ZodType): z.ZodType {
-  return field instanceof z.ZodOptional ? bareType(field.unwrap() as z.ZodType) : field;
+  return field instanceof z.ZodOptional || field instanceof z.ZodDefault
+    ? bareType(field.unwrap() as z.ZodType)
+    : field;
 }
 
 //? parseArgs throws before returning on usage mistakes; capture the typed error so hint
@@ -43,6 +45,14 @@ describe("parseArgs", () => {
   it("treats bare flags as booleans", () => {
     const parsed = parseArgs(SUBCOMMANDS.issue, ["o/r", "7", "--include-comments", "--fresh"]);
     expect(parsed.input).toEqual({ repo: "o/r", number: 7, include_comments: true, fresh: true });
+  });
+
+  it("parses the api escape-hatch acknowledgement as a bare boolean flag", () => {
+    expect(parseArgs(SUBCOMMANDS.api, ["/repos/o/r", "--ihaveto", "--fresh"]).input).toEqual({
+      path: "/repos/o/r",
+      ihaveto: true,
+      fresh: true,
+    });
   });
 
   it("rejects unknown flags, missing positionals, and extra tokens", () => {

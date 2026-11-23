@@ -4,6 +4,12 @@ import { CAPABILITY_GROUPS, capabilitiesTool } from "../../src/tools/capabilitie
 import { allTools } from "../../src/tools/registry.js";
 import { makeConfig } from "../helpers.js";
 
+//? Both wrappers mark an omittable input; the "?" marker must cover a defaulted
+//? field too, or github_api_get's ihaveto would look required in the index.
+function omittable(field: z.ZodType | undefined): boolean {
+  return field instanceof z.ZodOptional || field instanceof z.ZodDefault;
+}
+
 describe("CAPABILITY_GROUPS", () => {
   it("covers every registered tool exactly once", () => {
     const listed = Object.keys(CAPABILITY_GROUPS).sort();
@@ -96,6 +102,25 @@ describe("CAPABILITY_GROUPS", () => {
     }
   });
 
+  it("exposes the api last-resort acknowledgement as an optional input", async () => {
+    const entry = CAPABILITY_GROUPS.github_api_get!;
+    expect(entry.summary).toContain("call github_capabilities first");
+    expect(entry.summary).toContain("ihaveto: true");
+    expect(entry.signature).toBe("path, query?, fresh?, ihaveto?");
+    const output = await capabilitiesTool.handler({ group: "Meta" }, {
+      client: {} as never,
+      config: makeConfig(),
+      authFingerprint: "abc",
+    });
+    const snapshot = output.groups as Array<{ tools: Array<{ name: string; input: Array<{ name: string; optional: boolean; description: string }> }> }>;
+    const api = snapshot.flatMap((group) => group.tools).find((tool) => tool.name === "github_api_get")!;
+    expect(api.input.find((field) => field.name === "ihaveto")).toEqual({
+      name: "ihaveto",
+      optional: true,
+      description: "Explicit acknowledgement that no dedicated tool covers this endpoint",
+    });
+  });
+
   it("derives every capability signature from the registered input schema", () => {
     for (const tool of allTools) {
       const shape = tool.inputSchema as Record<string, z.ZodType>;
@@ -103,7 +128,7 @@ describe("CAPABILITY_GROUPS", () => {
       const derived =
         keys.length === 0
           ? "none"
-          : keys.map((key) => (shape[key] instanceof z.ZodOptional ? `${key}?` : key)).join(", ");
+          : keys.map((key) => (omittable(shape[key]) ? `${key}?` : key)).join(", ");
       expect(CAPABILITY_GROUPS[tool.name]?.signature, tool.name).toBe(derived);
     }
   });
