@@ -278,6 +278,53 @@ describe("runCli", () => {
     });
   });
 
+  it("runs the release-diff subcommand end to end with --include-commits", async () => {
+    const out = capture();
+    const err = capture();
+    const api = vi.fn(async (_url: string) => ({
+      data: {
+        status: "ahead",
+        ahead_by: 2,
+        behind_by: 0,
+        total_commits: 5,
+        commits: [{
+          sha: "abcdef1234567890",
+          html_url: "https://github.com/o/r/commit/abcdef1234567890",
+          commit: {
+            message: "fix: thing",
+            author: { name: "Ada", email: "ada@example.com", date: "2026-01-01T00:00:00Z" },
+          },
+          author: { login: "ada" },
+        }],
+        files: [{ sha: "f1", filename: "src/a.ts", status: "modified", additions: 1, deletions: 0, changes: 1 }],
+      },
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+      cache: { state: "miss" },
+    }));
+    const diffCtx: ToolContext = {
+      ...ctx,
+      client: { api, apiRaw: vi.fn(), raw: vi.fn() } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["release-diff", "o/r", "v1", "v2", "--include-commits"], {
+      createRuntime: async () => diffCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(api.mock.calls[0]?.[0]).toBe("/repos/o/r/compare/v1...v2");
+    expect(JSON.parse(out.text())).toMatchObject({
+      repo: "o/r",
+      from: "v1",
+      to: "v2",
+      total_commits: 2,
+      commits_truncated: false,
+      meta: { cache: "miss", calls: 1 },
+    });
+  });
+
   it("converts --query key=value pairs into the record github_api_get expects", async () => {
     const out = capture();
     const err = capture();

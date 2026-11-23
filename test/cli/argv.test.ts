@@ -108,6 +108,16 @@ describe("parseArgs", () => {
     });
   });
 
+  it("parses the release-diff subcommand into its five input keys", () => {
+    expect(parseArgs(SUBCOMMANDS["release-diff"], ["o/r", "v1", "v2", "--include-commits", "--fresh"]).input).toEqual({
+      repo: "o/r",
+      from: "v1",
+      to: "v2",
+      include_commits: true,
+      fresh: true,
+    });
+  });
+
   it("covers all registered tools", () => {
     expect(Object.keys(SUBCOMMANDS)).toHaveLength(tools.length);
   });

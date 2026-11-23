@@ -22,11 +22,11 @@ async function fixture(): Promise<string> {
   };
   await writeFile(join(root, "package.json"), JSON.stringify(pkg));
   await writeFile(join(root, "src/core/version.ts"), 'export const VERSION = "0.6.1";\n');
-  await writeFile(join(root, "src/tools/registry.ts"), "export const EXPECTED_TOOL_COUNT = 42;\n");
+  await writeFile(join(root, "src/tools/registry.ts"), "export const EXPECTED_TOOL_COUNT = 43;\n");
 
-  //? The verify-launch fixture mirrors the live 42-tool state so the offline
+  //? The verify-launch fixture mirrors the live 43-tool state so the offline
   //* consistency check stays meaningful after each tool addition.
-  const tools = Array.from({ length: 42 }, (_, index) => `github_tool_${index}`).join(", ");
+  const tools = Array.from({ length: 43 }, (_, index) => `github_tool_${index}`).join(", ");
   await writeFile(join(root, "README.md"), [
     "# Test",
     "## Built for mainland China networks",

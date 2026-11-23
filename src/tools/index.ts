@@ -21,6 +21,7 @@ import { prTool, prsTool } from "./pulls.js";
 import { rateLimitTool } from "./rate.js";
 import { readmeTool } from "./readme.js";
 import { pinTool } from "./pin.js";
+import { releaseDiffTool } from "./release-diff.js";
 import { releaseTool, releasesTool } from "./releases.js";
 import { repoTool } from "./repo.js";
 import { reposBatchTool } from "./repos-batch.js";
@@ -74,4 +75,5 @@ export const tools: readonly ToolDefinition[] = [
   reposBatchTool,
   compareRefsTool,
   doctorTool,
+  releaseDiffTool,
 ];

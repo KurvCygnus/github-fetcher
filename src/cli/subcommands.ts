@@ -29,6 +29,7 @@ export const SUBCOMMANDS = {
   branches: { tool: "github_branches", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
   labels: { tool: "github_labels", positional: [{ key: "repo", kind: "string" }], flags: { page: "number", "per-page": "number", "with-counts": "boolean", ...REPO_FRESH } },
   "compare-refs": { tool: "github_compare_refs", positional: [{ key: "repo", kind: "string" }, { key: "base", kind: "string" }, { key: "head", kind: "string" }], flags: { ...REPO_FRESH } },
+  "release-diff": { tool: "github_release_diff", positional: [{ key: "repo", kind: "string" }, { key: "from", kind: "string" }, { key: "to", kind: "string" }], flags: { "include-commits": "boolean", ...REPO_FRESH } },
   issue: { tool: "github_issue", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-comments": "boolean", "comment-limit": "number", "max-comment-chars": "number", ...REPO_FRESH } },
   issues: { tool: "github_issues", positional: [{ key: "repo", kind: "string" }], flags: { state: "string", type: "string", labels: "string", sort: "string", direction: "string", since: "string", page: "number", "per-page": "number", ...REPO_FRESH } },
   pr: { tool: "github_pr", positional: [{ key: "repo", kind: "string" }, { key: "number", kind: "number" }], flags: { "include-files": "boolean", ...REPO_FRESH } },
