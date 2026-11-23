@@ -60,6 +60,27 @@ describe("github_file", () => {
     });
   });
 
+  //* calls counts client invocations, so a warm cache hit still reports one
+  //* call even though no upstream request was spent.
+  it("reports cache hit with one client invocation on a warm read", async () => {
+    const client = {
+      api: vi.fn(async () => ({
+        data: contents("Hello World!\n"),
+        headers: new Headers(),
+        status: 200,
+        contentType: "application/json",
+        cache: { state: "hit" as const, ageSeconds: 42 },
+      })),
+      apiRaw: vi.fn(),
+      raw: vi.fn(),
+    } as unknown as GitHubApi;
+    const output = await fileTool.handler(
+      { repo: "octocat/Hello-World", path: "README.md", ref: "main" },
+      { client, config: makeConfig(), authFingerprint: "abc" },
+    );
+    expect(output).toMatchObject({ meta: { cache: "hit", age_s: 42, calls: 1 } });
+  });
+
   it("never returns binary bytes as text", async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]);
     const client = clientFor({

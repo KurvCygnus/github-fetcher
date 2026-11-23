@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cacheKey, createCacheStore, defaultCacheDir } from "../../src/core/cache.js";
 
 const dirs: string[] = [];
@@ -140,5 +140,116 @@ describe("createCacheStore", () => {
     await utimes(join(dir, `${key}.json`), old, old);
     await store.prune();
     await expect(readdir(dir)).resolves.toEqual([]);
+  });
+});
+
+describe("disk store rename retries", () => {
+  function eperm(): NodeJS.ErrnoException {
+    const error: NodeJS.ErrnoException = new Error("EPERM: operation not permitted");
+    error.code = "EPERM";
+    return error;
+  }
+
+  //? Faked disk boundaries keep the retry cases offline and deterministic: no
+  //* real socket, no real filesystem race, and the injected delay never sleeps.
+  function fakeDisk() {
+    const temps = new Set<string>();
+    return {
+      temps,
+      writeFs: {
+        async mkdir(_path: string) {},
+        writeFile: vi.fn(async (path: string, _data: string) => {
+          temps.add(path);
+        }),
+        chmod: vi.fn(async (_path: string, _mode: number) => {}),
+        rename: vi.fn(async (_from: string, _to: string) => {}),
+        rm: vi.fn(async (path: string) => {
+          temps.delete(path);
+        }),
+      },
+    };
+  }
+
+  it("retries an EPERM rename up to three attempts and leaves no temp file", async () => {
+    const disk = fakeDisk();
+    const retryDelay = vi.fn(async () => {});
+    let attempts = 0;
+    disk.writeFs.rename.mockImplementation(async (from, _to) => {
+      attempts += 1;
+      if (attempts < 3) throw eperm();
+      disk.temps.delete(from);
+    });
+    const store = createCacheStore({
+      mode: "disk",
+      dir: await tempDir(),
+      writeFs: disk.writeFs,
+      retryDelay,
+    });
+    await store.set(cacheKey(entry.url, "token-a"), entry);
+    expect(disk.writeFs.rename).toHaveBeenCalledTimes(3);
+    expect(disk.writeFs.writeFile).toHaveBeenCalledTimes(3);
+    expect(disk.writeFs.chmod).toHaveBeenCalledTimes(3);
+    expect(disk.writeFs.rm).toHaveBeenCalledTimes(2);
+    expect(retryDelay).toHaveBeenCalledTimes(2);
+    expect(disk.temps.size).toBe(0);
+  });
+
+  it("recreate uses the same temp path and content on every retry", async () => {
+    const disk = fakeDisk();
+    const retryDelay = vi.fn(async () => {});
+    let attempts = 0;
+    disk.writeFs.rename.mockImplementation(async (from, _to) => {
+      attempts += 1;
+      if (attempts < 3) throw eperm();
+      disk.temps.delete(from);
+    });
+    const store = createCacheStore({
+      mode: "disk",
+      dir: await tempDir(),
+      writeFs: disk.writeFs,
+      retryDelay,
+    });
+    await store.set(cacheKey(entry.url, "token-a"), entry);
+    const paths = disk.writeFs.writeFile.mock.calls.map((call) => call[0]);
+    expect(new Set(paths).size).toBe(1);
+    const bodies = disk.writeFs.writeFile.mock.calls.map((call) => call[1]);
+    expect(new Set(bodies).size).toBe(1);
+    expect(bodies[0]).toContain('\\"ok\\":true');
+  });
+
+  it("leaves no temp file after the third EPERM still fails", async () => {
+    const disk = fakeDisk();
+    const retryDelay = vi.fn(async () => {});
+    disk.writeFs.rename.mockImplementation(async () => {
+      throw eperm();
+    });
+    const store = createCacheStore({
+      mode: "disk",
+      dir: await tempDir(),
+      writeFs: disk.writeFs,
+      retryDelay,
+    });
+    await expect(store.set(cacheKey(entry.url, "token-a"), entry)).rejects.toMatchObject({ code: "EPERM" });
+    expect(disk.writeFs.rename).toHaveBeenCalledTimes(3);
+    expect(disk.writeFs.rm).toHaveBeenCalledTimes(3);
+    expect(retryDelay).toHaveBeenCalledTimes(2);
+    expect(disk.temps.size).toBe(0);
+  });
+
+  it("throws a non-EPERM rename error immediately without retrying", async () => {
+    const disk = fakeDisk();
+    const retryDelay = vi.fn(async () => {});
+    disk.writeFs.rename.mockImplementation(async () => {
+      throw new Error("EACCES: permission denied");
+    });
+    const store = createCacheStore({
+      mode: "disk",
+      dir: await tempDir(),
+      writeFs: disk.writeFs,
+      retryDelay,
+    });
+    await expect(store.set(cacheKey(entry.url, "token-a"), entry)).rejects.toThrow("EACCES");
+    expect(disk.writeFs.rename).toHaveBeenCalledTimes(1);
+    expect(retryDelay).not.toHaveBeenCalled();
   });
 });

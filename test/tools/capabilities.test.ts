@@ -26,6 +26,12 @@ describe("CAPABILITY_GROUPS", () => {
     }
   });
 
+  it("describes doctor proxy reachability as its own API probe", () => {
+    const summary = CAPABILITY_GROUPS.github_doctor!.summary;
+    expect(summary).toContain("doctor's own API probe");
+    expect(summary).not.toContain("TCP reachability probe");
+  });
+
   it("derives input rows from the registered schemas", async () => {
     const output = await capabilitiesTool.handler({}, {
       client: {} as never,

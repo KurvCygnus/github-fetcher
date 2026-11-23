@@ -7,7 +7,9 @@ import type { CacheOutcome, QuotaSnapshot } from "../core/github.js";
 //? the v0.4 cost-certainty report; helpers omit the key when no count is passed.
 //* calls counts client invocations — including cache hits and internal ref resolution —
 //* so it tracks activity rather than quota consumption; GitHub's per-window used counter
-//* is the quota ground truth.
+//* is the quota ground truth. A warm cache hit still counts as one client invocation,
+//* because the handler was still invoked even though the cache answered without an
+//* upstream request.
 export interface ResponseMeta {
   cache: "hit" | "revalidated" | "miss";
   age_s?: number | undefined;

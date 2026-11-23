@@ -32,6 +32,45 @@ export interface CacheOptions {
   mode: CacheMode;
   dir: string;
   now?: () => number;
+  //* The write-path fs boundary and retry pacing are injectable so Windows
+  //* EPERM retries are testable offline without real locks or real sleeps.
+  writeFs?: CacheWriteFs | undefined;
+  retryDelay?: (() => Promise<void>) | undefined;
+}
+
+export interface CacheWriteFs {
+  mkdir(path: string): Promise<void>;
+  writeFile(path: string, data: string): Promise<void>;
+  chmod(path: string, mode: number): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  rm(path: string): Promise<void>;
+}
+
+const defaultWriteFs: CacheWriteFs = {
+  async mkdir(path) {
+    await mkdir(path, { recursive: true });
+  },
+  async writeFile(path, data) {
+    await writeFile(path, data, "utf8");
+  },
+  async chmod(path, mode) {
+    await chmod(path, mode).catch(() => {});
+  },
+  async rename(from, to) {
+    await rename(from, to);
+  },
+  async rm(path) {
+    await rm(path, { force: true });
+  },
+};
+
+const RENAME_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 20;
+
+//? A short bounded pause gives Windows time to release an exclusive lock on
+//* the target before the identical temp file is written and renamed again.
+function defaultRetryDelay(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 }
 
 export function cacheKey(url: string, authFingerprint: string): string {
@@ -109,7 +148,12 @@ function memoryStore(): CacheStore {
   };
 }
 
-function diskStore(dir: string, now: () => number): CacheStore {
+function diskStore(
+  dir: string,
+  now: () => number,
+  writeFs: CacheWriteFs,
+  retryDelay: () => Promise<void>,
+): CacheStore {
   const file = (key: string) => join(dir, `${key}.json`);
 
   return {
@@ -144,12 +188,31 @@ function diskStore(dir: string, now: () => number): CacheStore {
     },
 
     async set(key, entry) {
-      await mkdir(dir, { recursive: true });
+      await writeFs.mkdir(dir);
       const target = file(key);
       const temp = `${target}.${randomUUID()}.tmp`;
-      await writeFile(temp, JSON.stringify(entry), "utf8");
-      await chmod(temp, 0o600).catch(() => {});
-      await rename(temp, target);
+      const body = JSON.stringify(entry);
+      const writeTemp = async (): Promise<void> => {
+        await writeFs.writeFile(temp, body);
+        await writeFs.chmod(temp, 0o600).catch(() => {});
+      };
+      await writeTemp();
+      for (let attempt = 1; attempt <= RENAME_ATTEMPTS; attempt += 1) {
+        try {
+          await writeFs.rename(temp, target);
+          return;
+        } catch (error) {
+          //* Only Windows EPERM is a transient lock; every other failure is
+          //* reported immediately. Each EPERM removes the temp so a failed
+          //* attempt leaves nothing on disk; the last one rethrows after cleanup.
+          const isEperm = error instanceof Error && (error as NodeJS.ErrnoException).code === "EPERM";
+          if (!isEperm) throw error;
+          await writeFs.rm(temp);
+          if (attempt === RENAME_ATTEMPTS) throw error;
+          await retryDelay();
+          await writeTemp();
+        }
+      }
     },
 
     async delete(key) {
@@ -186,5 +249,10 @@ function diskStore(dir: string, now: () => number): CacheStore {
 export function createCacheStore(options: CacheOptions): CacheStore {
   if (options.mode === "off") return emptyStore();
   if (options.mode === "memory") return memoryStore();
-  return diskStore(options.dir, options.now ?? Date.now);
+  return diskStore(
+    options.dir,
+    options.now ?? Date.now,
+    options.writeFs ?? defaultWriteFs,
+    options.retryDelay ?? defaultRetryDelay,
+  );
 }

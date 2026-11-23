@@ -33,9 +33,10 @@ describe("responseMeta", () => {
     expect(responseMeta({ quota: { resource: "core", remaining: 5 } })).toBeUndefined();
   });
 
-  //? v0.4 meta.calls: a handler that knows its exact upstream request count passes
-  //* it as the trailing argument; the key lands last inside the meta object.
-  it("reports the exact upstream call count when one is passed", () => {
+  //* calls counts client invocations, including cache hits and internal ref
+  //* resolution; a handler passes its exact count as the trailing argument and
+  //* the key lands last inside the meta object.
+  it("reports the exact client invocation count when one is passed", () => {
     expect(
       responseMeta(
         { cache: { state: "hit", ageSeconds: 12 }, quota: { resource: "core", remaining: 4990 } },
@@ -48,6 +49,14 @@ describe("responseMeta", () => {
       calls: 3,
     });
     expect(responseMeta({ cache: { state: "miss" } }, 1)).toEqual({ cache: "miss", calls: 1 });
+  });
+
+  it("counts a warm cache hit as one client invocation", () => {
+    expect(responseMeta({ cache: { state: "hit", ageSeconds: 30 } }, 1)).toEqual({
+      cache: "hit",
+      age_s: 30,
+      calls: 1,
+    });
   });
 
   it("keeps a passed call count out of undefined results", () => {

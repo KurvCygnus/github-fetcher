@@ -39,7 +39,9 @@ export const fileTool = defineTool({
     const path = encodePath(input.path);
     //? resolveRef issues its repo request only when neither an explicit ref nor
     //* a pin anchored the read (the truthy check mirrors its guard exactly).
-    //* The contents read adds one more request, so the count ends at 1 or 2.
+    //* The contents read adds one more client invocation, so the count ends at
+    //* 1 or 2; a warm cache hit still counts as one invocation even though no
+    //* upstream request was spent, because calls tracks client activity.
     const calls = (input.ref || pinned ? 0 : 1) + 1;
     let contents: ApiResult<ContentsPayload | ContentsPayload[]>;
     try {

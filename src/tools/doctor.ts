@@ -1,10 +1,10 @@
 import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { createConnection } from "node:net";
 import { homedir as osHomedir } from "node:os";
 import { join } from "node:path";
 import { defaultExecFile } from "../core/auth.js";
 import { defaultCacheDir } from "../core/cache.js";
+import type { ApiResult } from "../core/github.js";
 import { resolveProxy } from "../core/proxy.js";
 import { defineTool } from "./define.js";
 import type { ToolDefinition } from "./define.js";
@@ -16,37 +16,13 @@ export interface DoctorDeps {
   env?: NodeJS.ProcessEnv;
   homedir?: string;
   platform?: NodeJS.Platform;
-  probe?: (host: string, port: number) => Promise<boolean>;
   listCache?: (dir: string) => Promise<{ entries: number; bytes: number }>;
+  logger?: (message: string) => void;
 }
-
-const PROBE_TIMEOUT_MS = 2000;
 
 interface CacheWalkStats {
   entries: number;
   bytes: number;
-}
-
-//* The default probe opens exactly one TCP connection and always answers with a
-//* boolean, never a rejection: connect = reachable; timeout, socket error, or a
-//* close before connect = false. The settled guard keeps post-teardown events
-//* (close after destroy) from flipping an already-resolved answer.
-function defaultProbe(host: string, port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({ host, port });
-    let settled = false;
-    const finish = (value: boolean): void => {
-      if (settled) return;
-      settled = true;
-      socket.destroy();
-      resolve(value);
-    };
-    socket.setTimeout(PROBE_TIMEOUT_MS);
-    socket.once("connect", () => finish(true));
-    socket.once("timeout", () => finish(false));
-    socket.once("error", () => finish(false));
-    socket.once("close", () => finish(false));
-  });
 }
 
 //* The default walk counts *.json files (recursively) and sums their sizes. A
@@ -100,17 +76,24 @@ function parseScopes(header: string | null): string[] {
   return header.split(",").map((part) => part.trim()).filter((part) => part !== "");
 }
 
+//* Reachability diagnostics carry a bounded one-line reason so a verbose
+//* upstream error cannot flood the server log through the doctor's own call.
+function shortMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.length > 200 ? `${text.slice(0, 200)}...` : text;
+}
+
 export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
   const env = deps?.env ?? process.env;
   const home = deps?.homedir ?? osHomedir();
   const platform = deps?.platform ?? process.platform;
-  const probe = deps?.probe ?? defaultProbe;
   const listCache = deps?.listCache ?? defaultListCache;
+  const logger = deps?.logger ?? console.error;
   return defineTool({
     name: "github_doctor",
     title: "GitHub health check",
     description:
-      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with a TCP reachability probe of the resolved proxy, local cache state, current quota, and pinned_repos listing this session's pinned repositories. Costs 1 core call. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, pinned_repos, meta{cache}}.",
+      "One-screen health check of this server's own wiring: token presence, opt-in identity, proxy mode with reachability derived from the doctor's own API probe, local cache state, current quota, and pinned_repos listing this session's pinned repositories. Costs 1 core call. Returns {token{present}, identity?{authenticated_as, scopes}, proxy{mode, url, reachable}, cache{mode, dir, entries, bytes}, quota{core{limit, remaining, reset}, search{limit, remaining, reset}}, pinned_repos, meta{cache}}.",
     inputSchema: {},
     annotations: {
       readOnlyHint: true,
@@ -120,30 +103,36 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
     },
     async handler(_input, ctx) {
       const cacheDir = ctx.config.cacheDir ?? defaultCacheDir(env, platform, home);
-      const [proxy, cacheStats, quotaCall] = await Promise.all([
-        resolveProxy(ctx.config, defaultExecFile, console.error),
+      const [proxy, cacheStats] = await Promise.all([
+        resolveProxy(ctx.config, defaultExecFile, logger),
         //? Cache stats are best-effort diagnostics: a failing walk (missing or
         //* unreadable dir) degrades to zeros instead of failing the whole screen.
         listCache(cacheDir).catch(() => ({ entries: 0, bytes: 0 })),
-        ctx.client.api<RateLimitPayload>("/rate_limit", { cacheTtlMs: 0 }),
       ]);
 
-      //? Direct mode and proxy-less resolutions need no probe and are reachable
-      //* by definition; anything else reports what the probe observed, with a
-      //* rejection or a broken URL degrading to unreachable, never a throw.
+      let quotaCall: ApiResult<RateLimitPayload> | undefined;
+      let rateError: unknown;
+      try {
+        quotaCall = await ctx.client.api<RateLimitPayload>("/rate_limit", { cacheTtlMs: 0 });
+      } catch (error) {
+        rateError = error;
+        //* Direct mode keeps its existing contract: a failed quota call is a
+        //* real failure, so it still rejects instead of reporting an empty screen.
+        if (proxy.url === null) throw error;
+      }
+
+      //* Reachability is the outcome of this call's own quota probe, not a
+      //* separate TCP connection: no proxy is reachable by definition, a proxy
+      //* that answered /rate_limit is reachable, and a rejected one reports
+      //* unreachable with a short reason instead of failing the whole screen.
       let reachable = true;
-      if (proxy.url !== null) {
-        try {
-          const parsed = new URL(proxy.url);
-          const port = parsed.port === "" ? (parsed.protocol === "https:" ? 443 : 80) : Number(parsed.port);
-          reachable = await probe(parsed.hostname, port);
-        } catch {
-          reachable = false;
-        }
+      if (proxy.url !== null && quotaCall === undefined) {
+        reachable = false;
+        logger(`github_doctor: proxy ${proxy.url} did not answer /rate_limit: ${shortMessage(rateError)}`);
       }
 
       const quota = Object.fromEntries(
-        Object.entries(quotaCall.data.resources)
+        Object.entries(quotaCall?.data.resources ?? {})
           .filter(([name]) => name === "core" || name === "search")
           .map(([name, bucket]) => [
             name,
@@ -169,7 +158,10 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
             authenticatedAs = null;
           }
         }
-        identity = { authenticated_as: authenticatedAs, scopes: parseScopes(quotaCall.headers.get("x-oauth-scopes")) };
+        identity = {
+          authenticated_as: authenticatedAs,
+          scopes: parseScopes(quotaCall?.headers.get("x-oauth-scopes") ?? null),
+        };
       }
 
       //? cacheTtlMs: 0 means the quota call never reads the cache, so the outcome
@@ -177,7 +169,7 @@ export function createDoctorTool(deps?: DoctorDeps): ToolDefinition {
       //* report no cache outcome at all. Pins come from this context's own store,
       //* so one session never lists another's pins. meta trails the fixed keys,
       //* and identity sits between token and proxy per the shape.
-      const meta = responseMeta({ cache: quotaCall.cache }, calls) ?? { cache: "miss" as const, calls };
+      const meta = responseMeta({ cache: quotaCall?.cache }, calls) ?? { cache: "miss" as const, calls };
       return {
         token: { present: ctx.authFingerprint !== "anonymous" },
         ...(identity !== undefined ? { identity } : {}),

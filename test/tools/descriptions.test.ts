@@ -47,6 +47,14 @@ describe("tool descriptions", () => {
     }
   });
 
+  it("describes doctor proxy reachability as its own API probe", () => {
+    const doctor = allTools.find((tool) => tool.name === "github_doctor");
+    expect(doctor).toBeDefined();
+    const description = doctor!.description;
+    expect(description).toContain("doctor's own API probe");
+    expect(description).not.toContain("TCP reachability probe");
+  });
+
   it("declares exactly the github_repo handler's fields", async () => {
     //? A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
     //! mock literal is asserted to GitHubApi; assertions still inspect the same mock.

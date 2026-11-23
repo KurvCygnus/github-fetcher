@@ -1,5 +1,10 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+
+//* The doctor must never open a TCP probe socket; pin that at the module
+//* boundary so a reintroduced createConnection fails this suite immediately.
+const netMocks = vi.hoisted(() => ({ createConnection: vi.fn() }));
+vi.mock("node:net", () => ({ createConnection: netMocks.createConnection }));
 import type { GitHubApi } from "../../src/core/github.js";
 import { createPinStore } from "../../src/core/pin-store.js";
 import { createDoctorTool, doctorTool } from "../../src/tools/doctor.js";
@@ -19,12 +24,13 @@ const rateFixture = {
 //! outcome is spelled out because responseMeta derives the meta entry from it.
 //! A concrete vi.fn return cannot satisfy the generic api<T> signature, so the
 //! mock literal is asserted to GitHubApi and assertions inspect the same mock.
-function rateClient(options: { scopes?: string } = {}) {
+function rateClient(options: { scopes?: string; rateReject?: Error } = {}) {
   return {
     api: vi.fn(async (path: string) => {
       if (path === "/user") {
         return { data: { login: "KurvCygnus" }, headers: new Headers(), status: 200, contentType: "application/json" };
       }
+      if (options.rateReject !== undefined) throw options.rateReject;
       return {
         data: rateFixture,
         headers: new Headers(options.scopes === undefined ? {} : { "x-oauth-scopes": options.scopes }),
@@ -39,11 +45,10 @@ function rateClient(options: { scopes?: string } = {}) {
 }
 
 describe("github_doctor", () => {
-  it("reports the full screen in direct mode without probing", async () => {
+  it("reports the full screen in direct mode with reachable true and no TCP probe", async () => {
     const client = rateClient();
-    const probe = vi.fn(async () => true);
     const listCache = vi.fn(async () => ({ entries: 3, bytes: 120 }));
-    const tool = createDoctorTool({ probe, listCache });
+    const tool = createDoctorTool({ listCache });
     const result = await tool.handler(
       {},
       { client, config: makeConfig({ proxyMode: "direct", cacheDir: "/tmp/cache" }), authFingerprint: "abc" },
@@ -59,15 +64,14 @@ describe("github_doctor", () => {
       pinned_repos: [],
       meta: { cache: "miss", calls: 1 },
     });
-    expect(probe).not.toHaveBeenCalled();
+    expect(netMocks.createConnection).not.toHaveBeenCalled();
     expect(client.api).toHaveBeenCalledTimes(1);
     expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
   });
 
-  it("probes the resolved proxy host and port when a proxy URL exists", async () => {
+  it("reports a configured proxy reachable when its own /rate_limit call resolves", async () => {
     const client = rateClient();
-    const probe = vi.fn(async () => true);
-    const tool = createDoctorTool({ probe, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const tool = createDoctorTool({ listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       {
@@ -76,15 +80,16 @@ describe("github_doctor", () => {
         authFingerprint: "abc",
       },
     );
-    expect(probe).toHaveBeenCalledTimes(1);
-    expect(probe).toHaveBeenCalledWith("127.0.0.1", 12334);
     expect(result.proxy).toEqual({ mode: "always", url: "http://127.0.0.1:12334", reachable: true });
+    expect(client.api).toHaveBeenCalledTimes(1);
+    expect(client.api).toHaveBeenCalledWith("/rate_limit", { cacheTtlMs: 0 });
+    expect(netMocks.createConnection).not.toHaveBeenCalled();
   });
 
-  it("reports unreachable when the probe answers false", async () => {
-    const client = rateClient();
-    const probe = vi.fn(async () => false);
-    const tool = createDoctorTool({ probe, listCache: async () => ({ entries: 0, bytes: 0 }) });
+  it("reports a configured proxy unreachable with a short message when /rate_limit rejects", async () => {
+    const client = rateClient({ rateReject: new Error("proxy refused the tunnel") });
+    const logger = vi.fn();
+    const tool = createDoctorTool({ logger, listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       {
@@ -94,14 +99,17 @@ describe("github_doctor", () => {
       },
     );
     expect(result.proxy).toEqual({ mode: "always", url: "http://127.0.0.1:12334", reachable: false });
+    expect(logger).toHaveBeenCalledTimes(1);
+    const message = logger.mock.calls[0]?.[0];
+    expect(typeof message).toBe("string");
+    expect(message).toContain("http://127.0.0.1:12334");
+    expect(message).toContain("proxy refused the tunnel");
+    expect(netMocks.createConnection).not.toHaveBeenCalled();
   });
 
-  it("degrades a rejecting probe to unreachable instead of throwing", async () => {
-    const client = rateClient();
-    const probe = vi.fn(async () => {
-      throw new Error("probe blew up");
-    });
-    const tool = createDoctorTool({ probe, listCache: async () => ({ entries: 0, bytes: 0 }) });
+  it("keeps the public envelope shape when a configured proxy is unreachable", async () => {
+    const client = rateClient({ rateReject: new Error("proxy refused the tunnel") });
+    const tool = createDoctorTool({ logger: () => {}, listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       {
@@ -110,7 +118,9 @@ describe("github_doctor", () => {
         authFingerprint: "abc",
       },
     );
-    expect(result.proxy).toEqual({ mode: "always", url: "http://127.0.0.1:12334", reachable: false });
+    expect(Object.keys(result.proxy!).sort()).toEqual(["mode", "reachable", "url"]);
+    expect(result.meta).toEqual({ cache: "miss", calls: 1 });
+    expect(result.quota).toEqual({});
   });
 
   it("passes cache walk numbers through and resolves the dir from injected env", async () => {
@@ -148,7 +158,7 @@ describe("github_doctor", () => {
 
   it("omits identity keys unless the opt-in is on", async () => {
     const client = rateClient({ scopes: "repo" });
-    const tool = createDoctorTool({ probe: async () => true, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const tool = createDoctorTool({ listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       { client, config: makeConfig({ proxyMode: "direct" }), authFingerprint: "abc123" },
@@ -161,7 +171,7 @@ describe("github_doctor", () => {
 
   it("adds identity and scopes when the opt-in is on", async () => {
     const client = rateClient({ scopes: "gist, repo , workflow" });
-    const tool = createDoctorTool({ probe: async () => true, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const tool = createDoctorTool({ listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       { client, config: makeConfig({ proxyMode: "direct", exposeIdentity: true }), authFingerprint: "abc123" },
@@ -172,7 +182,7 @@ describe("github_doctor", () => {
 
   it("reports an anonymous token and null identity without calling /user", async () => {
     const client = rateClient();
-    const tool = createDoctorTool({ probe: async () => true, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const tool = createDoctorTool({ listCache: async () => ({ entries: 0, bytes: 0 }) });
     const result = await tool.handler(
       {},
       { client, config: makeConfig({ proxyMode: "direct", exposeIdentity: true }), authFingerprint: "anonymous" },
@@ -186,7 +196,7 @@ describe("github_doctor", () => {
     //* A context without a pin store reports no pins; a context with one lists
     //* its own keys, never another context's keys.
     const client = rateClient();
-    const tool = createDoctorTool({ probe: async () => true, listCache: async () => ({ entries: 0, bytes: 0 }) });
+    const tool = createDoctorTool({ listCache: async () => ({ entries: 0, bytes: 0 }) });
     const pinsA = createPinStore();
     const pinsB = createPinStore();
     pinsA.set("o/r", "main", "sha-a");
