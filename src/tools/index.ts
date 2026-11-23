@@ -2,6 +2,7 @@ import type { ToolDefinition } from "./define.js";
 import { workflowRunTool, workflowRunsTool, workflowsTool } from "./actions.js";
 import { apiGetTool } from "./api.js";
 import { repoActivityTool } from "./activity.js";
+import { batchActivityTool } from "./batch-activity.js";
 import { branchesTool } from "./branches.js";
 import { capabilitiesTool } from "./capabilities.js";
 import { commitTool } from "./commit.js";
@@ -76,4 +77,5 @@ export const tools: readonly ToolDefinition[] = [
   compareRefsTool,
   doctorTool,
   releaseDiffTool,
+  batchActivityTool,
 ];

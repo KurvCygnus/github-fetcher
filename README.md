@@ -7,7 +7,7 @@
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.19-blue)
 [![M8ven Trust](https://m8ven.ai/badge/mcp/kurvcygnus/github-fetcher)](https://m8ven.ai/mcp/kurvcygnus/github-fetcher?s=readme)
 
-AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 43 tools over stdio for reading repositories, users, files, commits, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, its own capability index and diagnostics, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
+AI coding agents spend much of their time reading GitHub, and this server makes that read path safe, cheap, and reliable. `@kurvcygnus/github-fetcher` is a read-only GitHub MCP server: it exposes 44 tools over stdio for reading repositories, users, files, commits, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, its own capability index and diagnostics, Actions, and search results through the GitHub REST API. It reuses credentials you already have, routes around unreliable networks, caches responses on disk, and cannot modify anything.
 
 ## Built for mainland China networks
 
@@ -32,7 +32,7 @@ Agents read GitHub constantly (trees, files, issues, pull requests, CI), and dir
 
 ## What you get
 
-- 43 read-only MCP tools over stdio: repositories, users, trees, files, commits, branches, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, user profiles, stars, and events, a capability discovery index with a self-diagnostic, search, Actions runs, and a generic read-only GET escape hatch.
+- 44 read-only MCP tools over stdio: repositories, users, trees, files, commits, branches, issues, pull requests, releases, repository health and activity, side-by-side repository and ref comparison, user profiles, stars, and events, a capability discovery index with a self-diagnostic, search, Actions runs, and a generic read-only GET escape hatch.
 - Token reuse from the git credential store: the server reads what your git credential helper already holds (for example the GitHub CLI or Git Credential Manager), so no new secrets land on disk. `GITHUB_TOKEN` takes precedence, and with no token at all it falls back to anonymous access (60 requests per hour).
 - Proxy routing built for hostile networks: in `auto` mode API requests go direct-first while `raw.githubusercontent.com` requests go proxy-first, with `always` and `direct` overrides. Proxy candidates are tried in order: `GITHUB_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, then your git proxy config.
 - An ETag disk cache that survives restarts: entries inside their TTL are served locally, expired entries are revalidated cheaply with `If-None-Match`/`If-Modified-Since`, and a 304 answer reuses the stored body instead of downloading it again.
@@ -163,7 +163,7 @@ Supported clients: `opencode`, `claude-desktop`, `claude-code`, `cursor`, `vscod
 
 ### Local daemon
 
-The stdio transport needs no setup. Clients that connect over HTTP instead use a background daemon that serves the same 43 tools on loopback only. The three commands are:
+The stdio transport needs no setup. Clients that connect over HTTP instead use a background daemon that serves the same 44 tools on loopback only. The three commands are:
 
     github-fetcher daemon start
     github-fetcher daemon status
@@ -180,7 +180,7 @@ Tokens and ref pins are per session: every MCP session gets its own credential a
 ## Limitations
 
 - Read-only by design: no writes, no GraphQL, no clone or archive tools.
-- 43 tools, not a complete GitHub API client; use `github_api_get` for read-only REST endpoints the dedicated tools do not cover, and pass `ihaveto: true` to acknowledge that last resort. Calls without it are rejected with a hint to call `github_capabilities` first.
+- 44 tools, not a complete GitHub API client; use `github_api_get` for read-only REST endpoints the dedicated tools do not cover, and pass `ihaveto: true` to acknowledge that last resort. Calls without it are rejected with a hint to call `github_capabilities` first.
 - Anonymous access is 60 requests per hour; code search requires a token.
 - No proxy is bundled; bring your own HTTP(S) proxy.
 - The cache stores response bodies on disk; do not use it on a shared account if that is unacceptable.
@@ -231,7 +231,7 @@ Agents receive the full input schema for every tool via `tools/list`; `github_ca
 - History: `github_commits` (`max_message_chars` truncates each commit message), `github_commit` (single-commit detail: message, author, additions/deletions, and the changed files with bounded patches; up to 100 files with `files_truncated` and patch text capped at 4000 characters; 1 core call)
 - Collaboration: `github_issue`, `github_issues` (accepts `since`, an ISO 8601 timestamp, to filter by update time), `github_pr`, `github_prs`, `github_labels` (label list with name, color, description, and optional upstream issue counts copied only when `with_counts` is true)
 - Releases: `github_release` (latest or tagged release with assets and download URLs; assets carry `digest` where GitHub provides one), `github_releases`, `github_release_diff` (two-ref release diff: ahead/behind, total_commits from ahead_by, up to 100 files with 4000-byte patch caps, and an optional projected commit list when include_commits is true)
-- Snapshot: `github_repo_health`, `github_compare_repos` (throttled breadth comparison of up to 20 repositories in one call)
+- Snapshot: `github_repo_health`, `github_compare_repos` (throttled breadth comparison of up to 20 repositories in one call), `github_batch_activity` (windowed activity snapshot for up to 5 repositories from core endpoints only; per-repo timeout and 3-page contributor gather)
 - Search: `github_search_repos` (reports `private`, `visibility`, `topics`, `license`, `created_at`, and `pushed_at` per item; `public_only` defaults to `true` — pass `false` to include private items — filters client-side, and reports `filtered_count`, while `total_count` stays GitHub's unfiltered total), `github_search_code` (token required; `repo:`, `path:`, `state:`, and `label:` qualifiers parsed from the free-form query), `github_search_issues` (a `repo:` query uses the repository issues endpoint with a null `total_count`, a `repo_scoped` marker, and pull requests filtered out; `sort: reactions` is unsupported there), `github_search_users` (user search by GitHub query syntax — `location:`, `language:`, `followers:>=N`, `repositories:>=N` qualifiers; lean profiles, with detail in `github_user`), `github_trending` (computed approximation from GitHub search, NOT GitHub's trending page: a rising lens of repositories created inside the window and an active lens of repositories pushed inside it, both star-sorted; each observation is snapshotted, so repeated calls with the same lens gain `stars_gained` against the prior; 2 search calls)
 - Actions: `github_workflows`, `github_workflow_runs`, `github_workflow_run`
 
@@ -250,7 +250,7 @@ Agents receive the full input schema for every tool via `tools/list`; `github_ca
 - `npm test`: run the test suite
 - `npm run typecheck`: strict TypeScript check
 - `npm run build`: production build
-- `npm run smoke`: spawns the built server over stdio and asserts that all 43 tools are listed
+- `npm run smoke`: spawns the built server over stdio and asserts that all 44 tools are listed
 - `GITHUB_SMOKE=1 npm test`: runs the suite with `GITHUB_SMOKE` set; the variable is reserved and currently unused
 
 ## License

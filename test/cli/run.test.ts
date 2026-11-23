@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolContext } from "../../src/core/context.js";
 import { GithubError } from "../../src/core/errors.js";
 import { runCli } from "../../src/cli/run.js";
+import { windowStartDate } from "../../src/tools/health.js";
 import { makeConfig } from "../helpers.js";
 
 function capture() {
@@ -322,6 +323,60 @@ describe("runCli", () => {
       total_commits: 2,
       commits_truncated: false,
       meta: { cache: "miss", calls: 1 },
+    });
+  });
+
+  it("runs the batch-activity subcommand end to end", async () => {
+    const out = capture();
+    const err = capture();
+    const start = windowStartDate(new Date(), 7);
+    const base = "/repos/o/r";
+    const api = vi.fn(async (url: string) => ({
+      data: url === base
+        ? { stargazers_count: 9, forks_count: 2, open_issues_count: 4 }
+        : url === `${base}/pulls?state=open&per_page=1`
+          ? []
+          : url === `${base}/commits?since=${start}&per_page=100`
+            ? []
+            : url === `${base}/actions/runs?created=>=${start}&per_page=100`
+              ? { total_count: 0, workflow_runs: [] }
+              : [{ login: "a", contributions: 5 }],
+      headers: new Headers(),
+      status: 200,
+      contentType: "application/json",
+      cache: { state: "miss" },
+    }));
+    const batchCtx: ToolContext = {
+      ...ctx,
+      client: { api, apiRaw: vi.fn(), raw: vi.fn() } as unknown as ToolContext["client"],
+    };
+    const code = await runCli(["batch-activity", "o/r", "--window-days", "7", "--top-n", "1"], {
+      createRuntime: async () => batchCtx,
+      stdout: out.stdout,
+      stderr: err.stdout,
+    });
+    expect(code).toBe(0);
+    expect(api).toHaveBeenCalledTimes(5);
+    expect(api.mock.calls.map((call) => call[0])).toEqual([
+      base,
+      `${base}/pulls?state=open&per_page=1`,
+      `${base}/commits?since=${start}&per_page=100`,
+      `${base}/actions/runs?created=>=${start}&per_page=100`,
+      `${base}/contributors?per_page=100&page=1`,
+    ]);
+    expect(JSON.parse(out.text())).toMatchObject({
+      window_days: 7,
+      top_n: 1,
+      items: [{
+        repo: "o/r",
+        ok: true,
+        open_issues: 4,
+        open_prs: 0,
+        open_counts_exact: false,
+        contributors: { top: [{ login: "a", contributions: 5 }], top_share: 1, truncated: false },
+        calls: 5,
+      }],
+      meta: { cache: "miss", calls: 5 },
     });
   });
 

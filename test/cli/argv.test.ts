@@ -118,6 +118,17 @@ describe("parseArgs", () => {
     });
   });
 
+  it("parses the batch-activity subcommand into its four input keys", () => {
+    expect(parseArgs(SUBCOMMANDS["batch-activity"], [
+      "o/a", "o/b", "--window-days", "14", "--top-n", "3", "--fresh",
+    ]).input).toEqual({
+      repos: ["o/a", "o/b"],
+      window_days: 14,
+      top_n: 3,
+      fresh: true,
+    });
+  });
+
   it("covers all registered tools", () => {
     expect(Object.keys(SUBCOMMANDS)).toHaveLength(tools.length);
   });

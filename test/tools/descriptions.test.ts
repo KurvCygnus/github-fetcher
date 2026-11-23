@@ -189,4 +189,14 @@ describe("tool descriptions", () => {
     expect(doctor.description).toContain("Costs 1 core call, or 2 with opt-in identity.");
     expect(doctor.description).not.toContain("Costs 1 core call.");
   });
+
+  it("documents the batch activity cost and abandoned-request behavior", () => {
+    const tool = allTools.find((item) => item.name === "github_batch_activity")!;
+    expect(declaredFields(tool.description)).toEqual([
+      "window_days", "top_n", "generated_at", "items", "meta",
+    ]);
+    expect(tool.description).toContain("core endpoints only");
+    expect(tool.description).toContain("search quota untouched");
+    expect(tool.description).toContain("result is discarded");
+  });
 });

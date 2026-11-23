@@ -25,6 +25,10 @@ describe("CAPABILITY_GROUPS", () => {
     expect(CAPABILITY_GROUPS.github_release_diff!.group).toBe("Releases");
   });
 
+  it("places github_batch_activity in the Snapshot group", () => {
+    expect(CAPABILITY_GROUPS.github_batch_activity!.group).toBe("Snapshot");
+  });
+
   it("gives every registered tool a non-empty signature", () => {
     for (const [name, entry] of Object.entries(CAPABILITY_GROUPS)) {
       expect(entry.signature.length, name).toBeGreaterThan(0);
@@ -93,7 +97,7 @@ describe("CAPABILITY_GROUPS", () => {
     const singleTools = [
       "github_repo", "github_file", "github_readme", "github_issue", "github_pr", "github_release",
       "github_workflow_run", "github_rate_limit", "github_capabilities", "github_repo_health",
-      "github_compare_repos",
+      "github_compare_repos", "github_batch_activity",
       "github_user", "github_repos", "github_compare_refs", "github_languages",
       "github_repo_activity", "github_doctor",
     ];

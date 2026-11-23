@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - `github_labels` lists repository labels with their name, color, description, and optional upstream issue counts; `with_counts: true` copies `open_issues_count` and `closed_issues_count` from the upstream response when present and emits `null` otherwise, in a single client call. The tool count is 42.
 - `github_release_diff` compares two refs in one call: ahead/behind counts, `total_commits` from `ahead_by`, up to 100 changed files with patches capped at 4000 bytes and per-file `patch_truncated`, and an optional projected commit list when `include_commits` is true. The tool count is 43.
+- `github_batch_activity` builds a windowed activity snapshot for up to 5 repositories in one call from core endpoints only: open issue/PR counts, recent commit counts, CI conclusion histograms, and top contributors with their share. Each repository runs its five core GETs under an 8-second timeout so one slow repository yields an `ok:false` item without failing the batch; the search quota is untouched. The tool count is 44.
 
 ## [0.6.1] - 2026-11-23
 

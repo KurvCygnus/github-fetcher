@@ -39,6 +39,7 @@ export const SUBCOMMANDS = {
   "pin-ref": { tool: "github_pin_ref", positional: [{ key: "repo", kind: "string" }, { key: "ref", kind: "string", required: false }], flags: { unpin: "boolean" } },
   health: { tool: "github_repo_health", positional: [{ key: "repo", kind: "string" }], flags: { "window-days": "number", labels: "string-array", ...REPO_FRESH } },
   "compare-repos": { tool: "github_compare_repos", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", ...REPO_FRESH } },
+  "batch-activity": { tool: "github_batch_activity", positional: [{ key: "repos", kind: "string-array" }], flags: { "window-days": "number", "top-n": "number", ...REPO_FRESH } },
   user: { tool: "github_user", positional: [{ key: "user", kind: "string" }], flags: {} },
   "user-repos": { tool: "github_user_repos", positional: [{ key: "user", kind: "string" }], flags: { type: "string", sort: "string", order: "string", "min-stars": "number", "include-forks": "boolean", page: "number", "per-page": "number", ...REPO_FRESH } },
   "user-starred": { tool: "github_user_starred", positional: [{ key: "user", kind: "string" }], flags: { page: "number", "per-page": "number", ...REPO_FRESH } },
